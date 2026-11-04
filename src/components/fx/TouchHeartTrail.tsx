@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -62,7 +62,7 @@ export function TouchHeartTrail() {
 
     const handlePointerMove = (e: PointerEvent) => {
       // Only spawn on drag or move when button is pressed (or mobile touch drag)
-      if (e.buttons === 0 && e.pointerType === "mouse") return;
+      if (e.pointerType === "touch") return; if (e.buttons === 0 && e.pointerType === "mouse") return;
       const now = performance.now();
       if (now - lastMoveTime < 45) return; // throttle 45ms
       lastMoveTime = now;

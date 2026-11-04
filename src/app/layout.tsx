@@ -43,7 +43,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-dvh w-full max-w-full overflow-x-hidden antialiased selection:bg-[#FECDD3]/60 selection:text-[#1E293B] transition-colors duration-200">
+      <body className="min-h-dvh w-full max-w-full overflow-x-clip overflow-y-auto antialiased selection:bg-[#FECDD3]/60 selection:text-[#1E293B] transition-colors duration-200">
         <ThemeProvider>
           <AudioProvider>
             <PwaServiceWorker />

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
@@ -309,12 +309,12 @@ export default function CoupleSpaceDashboard() {
       musicSyncEvent={musicSyncEvent}
       onBroadcastMusicSync={broadcastMusicSync}
     >
-      <div className="min-h-dvh w-full max-w-full overflow-x-hidden sanrio-shell-backdrop lg:p-4 xl:p-6 transition-colors">
+      <div className="min-h-dvh w-full max-w-full sanrio-shell-backdrop lg:p-4 xl:p-6 transition-colors">
         {/* Floating Partner Listening Sync Toast Banner */}
         <PartnerListeningBanner />
 
         {/* Lingora-Style Centered Dashboard Frame (Mobile Optimized GPU Scrolling) */}
-        <div className="mx-auto flex min-h-dvh lg:min-h-[calc(100dvh-3rem)] w-full max-w-[1380px] overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm lg:backdrop-blur-md lg:rounded-[34px] lg:border lg:border-pink-100/80 dark:lg:border-slate-800 lg:shadow-[0_24px_70px_-15px_rgba(30,41,59,0.08)] dark:lg:shadow-[0_24px_70px_-15px_rgba(0,0,0,0.65)] transition-colors">
+        <div className="mx-auto flex min-h-dvh lg:min-h-[calc(100dvh-3rem)] w-full max-w-[1380px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm lg:backdrop-blur-md lg:rounded-[34px] lg:border lg:border-pink-100/80 dark:lg:border-slate-800 lg:shadow-[0_24px_70px_-15px_rgba(30,41,59,0.08)] dark:lg:shadow-[0_24px_70px_-15px_rgba(0,0,0,0.65)] transition-colors">
         {/* Desktop Left Sidebar (lg+) */}
         <DesktopSidebar
           activeTab={activeTab}
@@ -341,7 +341,7 @@ export default function CoupleSpaceDashboard() {
             onOpenSharedMusicModal={() => setOpenMusicModal(true)}
           />
 
-          <main className="w-full max-w-full overflow-x-hidden flex-1 px-3 sm:px-6 lg:px-8 pt-4 sm:pt-5 pb-32 lg:pb-12">
+          <main className="w-full flex-1 px-3 sm:px-6 lg:px-8 pt-4 sm:pt-5 pb-32 lg:pb-12">
             {/* TAB 1: HOME (Hero Banner + Mood Pill + Presence Orb + Secret Envelope + Stats) */}
             {activeTab === "home" && (
               <motion.div
