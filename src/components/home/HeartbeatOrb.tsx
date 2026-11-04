@@ -42,6 +42,15 @@ export function HeartbeatOrb({
   heartbeatCount,
   onSendHeartbeat,
 }: HeartbeatOrbProps) {
+  const handleHeartbeatClick = () => {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      try {
+        navigator.vibrate([100, 50, 100]);
+      } catch {}
+    }
+    onSendHeartbeat();
+  };
+
   return (
     <section className="saas-glow-card p-6 sm:p-7">
       {/* Signature SaaS Soft Radial Pastel Aura */}
@@ -128,7 +137,7 @@ export function HeartbeatOrb({
                 animate={{ opacity: 0, scale: 1.9 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 1.2, ease: "easeOut" }}
-                className="pointer-events-none absolute h-40 w-40 rounded-full bg-[#BAE6FD]/45 animate-ping"
+                className="pointer-events-none absolute h-40 w-40 rounded-full bg-[#BAE6FD]/45 animate-ping transform-gpu"
               />
               {/* Outer Sky Blue Concentric Wave */}
               <motion.div
@@ -136,7 +145,7 @@ export function HeartbeatOrb({
                 animate={{ opacity: 0, scale: 2.35 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 1.75, ease: "easeOut" }}
-                className="pointer-events-none absolute h-44 w-44 rounded-full border-[3px] border-[#BAE6FD] shadow-[0_0_25px_rgba(186,230,253,0.75)]"
+                className="pointer-events-none absolute h-44 w-44 rounded-full border-[3px] border-[#BAE6FD] shadow-[0_0_25px_rgba(186,230,253,0.75)] transform-gpu"
               />
               {/* Middle Pastel Pink Concentric Wave */}
               <motion.div
@@ -144,7 +153,7 @@ export function HeartbeatOrb({
                 animate={{ opacity: 0, scale: 2.1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 1.65, delay: 0.16, ease: "easeOut" }}
-                className="pointer-events-none absolute h-44 w-44 rounded-full border-[3px] border-[#FECDD3] shadow-[0_0_25px_rgba(254,205,211,0.8)]"
+                className="pointer-events-none absolute h-44 w-44 rounded-full border-[3px] border-[#FECDD3] shadow-[0_0_25px_rgba(254,205,211,0.8)] transform-gpu"
               />
               {/* Inner Soft Lavender Shimmer Wave */}
               <motion.div
@@ -152,14 +161,14 @@ export function HeartbeatOrb({
                 animate={{ opacity: 0, scale: 1.75 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 1.5, delay: 0.32, ease: "easeOut" }}
-                className="pointer-events-none absolute h-44 w-44 rounded-full border-2 border-[#E9D5FF] bg-[#FECDD3]/10"
+                className="pointer-events-none absolute h-44 w-44 rounded-full border-2 border-[#E9D5FF] bg-[#FECDD3]/10 transform-gpu"
               />
             </React.Fragment>
           ))}
         </AnimatePresence>
 
         {/* Character Stage: Duo Holding Glowing Red Heart if BOTH online, else Floating Cloud Cinnamoroll */}
-        <div className="relative z-10">
+        <div className="relative z-10 transform-gpu">
           <AnimatePresence mode="wait">
             {bothPartnersOnline ? (
               <motion.div
@@ -168,6 +177,7 @@ export function HeartbeatOrb({
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ duration: 0.35 }}
+                className="transform-gpu"
               >
                 <CoupleTogetherBadge
                   userAName={userAName}
@@ -175,7 +185,7 @@ export function HeartbeatOrb({
                   userACharacter={userACharacter}
                   userBCharacter={userBCharacter}
                   externalBurstKey={characterBurstKey}
-                  onTapHeart={onSendHeartbeat}
+                  onTapHeart={handleHeartbeatClick}
                 />
               </motion.div>
             ) : (
@@ -185,13 +195,14 @@ export function HeartbeatOrb({
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.92 }}
                 transition={{ duration: 0.35 }}
+                className="transform-gpu"
               >
                 <CinnamorollCharacter
                   size={182}
                   characterId={userACharacter}
                   showCloud
                   externalBurstKey={characterBurstKey}
-                  onTapCharacter={onSendHeartbeat}
+                  onTapCharacter={handleHeartbeatClick}
                 />
               </motion.div>
             )}
@@ -205,7 +216,7 @@ export function HeartbeatOrb({
           type="button"
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.96 }}
-          onClick={onSendHeartbeat}
+          onClick={handleHeartbeatClick}
           className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#BAE6FD]/80 via-[#FECDD3]/80 to-[#E9D5FF]/80 dark:from-sky-900/80 dark:via-pink-900/80 dark:to-purple-900/80 px-6 py-2.5 text-sm font-bold text-[#1E293B] dark:text-white border border-pink-200 dark:border-purple-700 shadow-sm hover:shadow-md transition-all"
         >
           <Sparkles className="h-4 w-4 text-rose-500 dark:text-pink-400" />

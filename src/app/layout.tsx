@@ -23,12 +23,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#FFFFFF",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -45,7 +43,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-dvh antialiased selection:bg-[#FECDD3]/60 selection:text-[#1E293B] transition-colors duration-200">
+      <body className="min-h-dvh w-full max-w-full overflow-x-hidden antialiased selection:bg-[#FECDD3]/60 selection:text-[#1E293B] transition-colors duration-200">
         <ThemeProvider>
           <AudioProvider>
             <PwaServiceWorker />

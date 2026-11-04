@@ -98,7 +98,7 @@ export function SaasQuickExploreGrid({
       </div>
 
       {/* SaaS Reference Card Grid with Soft Radial Inner Pastel Glows */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {cards.map((card) => {
           const Icon = card.icon;
           return (

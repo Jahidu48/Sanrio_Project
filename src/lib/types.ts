@@ -171,6 +171,14 @@ export interface MusicSyncEvent {
   timestamp: number;
 }
 
+export interface MusicQueueItem {
+  id: string;
+  title: string;
+  url: string;
+  videoId?: string;
+  addedBy: string;
+}
+
 export interface MusicRoomState {
   videoId: string;
   url: string;
@@ -179,6 +187,7 @@ export interface MusicRoomState {
   startedAtServerTime: number;
   pausedAtSeconds: number;
   updatedBy: string;
+  queue?: MusicQueueItem[];
 }
 
 // ============================================================================

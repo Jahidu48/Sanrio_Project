@@ -133,6 +133,27 @@ export function CoupleChatTab({
     };
   }, []);
 
+  // Listen for YouTube Error 150/101 embed restriction from Jockie Music Bot
+  useEffect(() => {
+    const handleEmbedError = (e: CustomEvent<{ videoId?: string }>) => {
+      onSendMessage({
+        type: "text",
+        text: `⚠️ [Jockie Music Bot] Video YouTube ini dibatasi hak cipta oleh pemiliknya (Error 150/101 - pemutaran di situs lain diblokir). Silakan coba link versi audio/lirik atau gunakan perintah !skip! 💖`,
+      });
+    };
+
+    window.addEventListener(
+      "jockie-embed-error" as any,
+      handleEmbedError as EventListener
+    );
+    return () => {
+      window.removeEventListener(
+        "jockie-embed-error" as any,
+        handleEmbedError as EventListener
+      );
+    };
+  }, [onSendMessage]);
+
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputText(e.target.value);
     onSendTyping();
@@ -167,7 +188,9 @@ export function CoupleChatTab({
       const arg = parts.slice(1).join(" ");
       let botResponse = "";
 
-      if (cmd === "!play") {
+      if (cmd === "!stop") {
+        botResponse = `🛑 [Jockie Music Bot] Musik dihentikan seketika dan antrean telah dikosongkan.`;
+      } else if (cmd === "!play") {
         botResponse = arg
           ? `🎶 [Jockie Music Bot] Menerima lagu YouTube: ${arg} 💖\nSedang memutar dan menyinkronkan audio di kedua layar...`
           : `🎵 [Jockie Music Bot] Melanjutkan pemutaran musik bersama.`;
@@ -1009,6 +1032,13 @@ export function CoupleChatTab({
                   className="rounded-full bg-pink-100 dark:bg-purple-950 px-2 py-0.5 font-mono font-semibold text-pink-700 dark:text-pink-300 hover:bg-pink-200"
                 >
                   !play &lt;url&gt;
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInputText("!stop")}
+                  className="rounded-full bg-rose-100 dark:bg-rose-950 px-2 py-0.5 font-mono font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-200"
+                >
+                  !stop
                 </button>
                 <button
                   type="button"

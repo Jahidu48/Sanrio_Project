@@ -222,7 +222,7 @@ export function SecretEnvelopePrompt({
       ) : null}
 
       {/* Answer Cards Grid (My Answer + Time-Locked / Unlocked Partner Card) */}
-      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Current User Card */}
         <div className="rounded-2xl border border-sky-100 dark:border-slate-800 bg-[#F8FAFC]/90 dark:bg-slate-800/90 p-4 shadow-xs">
           <div className="flex items-center justify-between mb-2">

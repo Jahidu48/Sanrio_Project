@@ -128,7 +128,7 @@ export function CinnamorollCharacter({
         animate={{ y: [0, -8, 0] }}
         transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
         whileTap={{ scale: 0.94 }}
-        className="relative flex flex-col items-center justify-center"
+        className="relative flex flex-col items-center justify-center transform-gpu"
         style={{ width: size, height: size }}
       >
         {/* Pastel Fluffy Cloud Cushion Underneath */}

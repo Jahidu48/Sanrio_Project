@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Battery,
+  BatteryCharging,
   Disc3,
   Flame,
   Gem,
@@ -66,6 +68,50 @@ export function TopCoupleBar({
   const charA = getSanrioCharacter(profile.userACharacter, "cinnamoroll");
   const charB = getSanrioCharacter(profile.userBCharacter, "my-melody");
 
+  // Real-time Device Battery Status Hook (Web Battery API)
+  const [batteryInfo, setBatteryInfo] = useState<{
+    level: number;
+    charging: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    const nav = navigator as any;
+    if (typeof nav.getBattery !== "function") return;
+
+    let mounted = true;
+    let batteryObj: any = null;
+
+    nav
+      .getBattery()
+      .then((battery: any) => {
+        if (!mounted) return;
+        batteryObj = battery;
+        const update = () => {
+          setBatteryInfo({
+            level: Math.round(battery.level * 100),
+            charging: Boolean(battery.charging),
+          });
+        };
+        update();
+        battery.addEventListener("levelchange", update);
+        battery.addEventListener("chargingchange", update);
+      })
+      .catch(() => {});
+
+    return () => {
+      mounted = false;
+      if (batteryObj) {
+        try {
+          batteryObj.removeEventListener("levelchange", null);
+          batteryObj.removeEventListener("chargingchange", null);
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, []);
+
   const switchRole = (role: PartnerRole) => {
     playPop();
     onUpdateProfile({ ...profile, role });
@@ -78,7 +124,7 @@ export function TopCoupleBar({
 
   return (
     <header className="sticky top-0 z-30 w-full bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 transition-colors">
-      <div className="flex items-center justify-between gap-2.5 px-4 sm:px-6 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 p-3 sm:px-4 sm:py-2.5">
         {/* Mobile Brand / Desktop Room Status Pill */}
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="flex lg:hidden h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#BAE6FD]/60 via-white to-[#FECDD3]/60 dark:from-purple-900/40 dark:via-slate-800 dark:to-slate-900 border border-pink-100 dark:border-purple-800 shadow-sm">
@@ -163,7 +209,7 @@ export function TopCoupleBar({
                     isSharedPlaying ? "animate-spin [animation-duration:3s]" : ""
                   }`}
                 />
-                <span className="hidden sm:inline max-w-[110px] truncate text-[11px] font-bold">
+                <span className="hidden md:inline max-w-[110px] truncate text-[11px] font-bold">
                   {currentTrack?.title || "Playlist Bersama"}
                 </span>
                 <span className="text-[10px] text-slate-400 dark:text-slate-400 font-mono">
@@ -213,7 +259,7 @@ export function TopCoupleBar({
                 className="h-4 w-4 object-contain"
               />
             </div>
-            <span className="hidden md:inline text-[11px] pr-1">
+            <span className="hidden md:inline-flex text-[11px] pr-1">
               {isDark ? "Midnight" : "Day Cloud"}
             </span>
             <span className="text-amber-500 dark:text-purple-400 pr-1">
@@ -278,6 +324,27 @@ export function TopCoupleBar({
               <span className="max-w-[62px] truncate">{profile.userBName}</span>
             </button>
           </div>
+
+          {/* Real-time Battery Status Indicator */}
+          {batteryInfo && (
+            <div
+              className="inline-flex items-center gap-1 rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 px-2 py-1 text-[11px] font-mono text-slate-600 dark:text-slate-300 shadow-2xs"
+              title={`Status Baterai: ${batteryInfo.level}% ${batteryInfo.charging ? "(Sedang Mengisi Daya ⚡)" : ""}`}
+            >
+              {batteryInfo.charging ? (
+                <BatteryCharging className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
+              ) : (
+                <Battery
+                  className={`h-3.5 w-3.5 ${
+                    batteryInfo.level <= 20
+                      ? "text-rose-500 font-bold"
+                      : "text-slate-400"
+                  }`}
+                />
+              )}
+              <span>{batteryInfo.level}%</span>
+            </div>
+          )}
 
           {/* Settings Modal Button */}
           <button

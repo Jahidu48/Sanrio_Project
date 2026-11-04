@@ -189,6 +189,7 @@ create table if not exists public.music_room_state (
   started_at_server_time bigint not null default 0,
   paused_at_seconds numeric not null default 0,
   updated_by text not null default 'System',
+  queue jsonb default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
 
