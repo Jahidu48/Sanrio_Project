@@ -1,0 +1,52 @@
+{
+  "name": "Cinnamelo — Ruang Kecil Kita",
+  "short_name": "Cinnamelo",
+  "description": "Minimalist Romantic Sanrio PWA untuk pasangan — Heartbeat Ripple, Co-op Whiteboard, Mini Games Berdua & Shared Journal.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF",
+  "categories": ["lifestyle", "games", "social"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Kirim Detak Rindu",
+      "short_name": "Home",
+      "url": "/?tab=home",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Co-op Canvas",
+      "short_name": "Canvas",
+      "url": "/?tab=canvas",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Main Game Berdua",
+      "short_name": "Play",
+      "url": "/?tab=play",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Shared Journal",
+      "short_name": "Journal",
+      "url": "/?tab=journal",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    }
+  ]
+}

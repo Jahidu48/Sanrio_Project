@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="116" fill="#FFFFFF"/>
+  <rect x="20" y="20" width="472" height="472" rx="98" fill="#F8FAFC" stroke="#FECDD3" stroke-width="8"/>
+  <circle cx="145" cy="145" r="78" fill="#BAE6FD" fill-opacity="0.45"/>
+  <circle cx="372" cy="364" r="88" fill="#E9D5FF" fill-opacity="0.45"/>
+  <!-- Cinnamoroll Floppy Ears & Face -->
+  <ellipse cx="118" cy="266" rx="74" ry="34" transform="rotate(-18 118 266)" fill="#FFFFFF" stroke="#334155" stroke-width="10"/>
+  <ellipse cx="394" cy="266" rx="74" ry="34" transform="rotate(18 394 266)" fill="#FFFFFF" stroke="#334155" stroke-width="10"/>
+  <ellipse cx="256" cy="260" rx="102" ry="78" fill="#FFFFFF" stroke="#334155" stroke-width="10"/>
+  <ellipse cx="216" cy="260" rx="12" ry="16" fill="#38BDF8"/>
+  <ellipse cx="296" cy="260" rx="12" ry="16" fill="#38BDF8"/>
+  <ellipse cx="195" cy="282" rx="18" ry="10" fill="#FECDD3"/>
+  <ellipse cx="317" cy="282" rx="18" ry="10" fill="#FECDD3"/>
+  <path d="M240 274C245 282 256 282 256 274C256 282 267 282 272 274" stroke="#334155" stroke-width="8" stroke-linecap="round"/>
+  <!-- Glowing Heart -->
+  <path d="M256 392C256 392 202 356 202 324C202 306.5 216 294 232 294C242.5 294 251.5 300 256 309C260.5 300 269.5 294 280 294C296 294 310 306.5 310 324C310 356 256 392 256 392Z" fill="#FB7185" stroke="#334155" stroke-width="9" stroke-linejoin="round"/>
+</svg>

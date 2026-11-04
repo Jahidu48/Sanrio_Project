@@ -1,0 +1,299 @@
+"use client";
+
+import React, { useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  Disc3,
+  Flame,
+  Gem,
+  Moon,
+  Music,
+  Pause,
+  Play,
+  Radio,
+  RotateCcw,
+  Settings2,
+  Sun,
+  Upload,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
+import { getSanrioCharacter } from "@/lib/sanrioCharacters";
+import { useTheme } from "@/context/ThemeContext";
+import { useAudio } from "@/context/AudioContext";
+import { useSharedMusic } from "@/context/SharedMusicContext";
+import type { CoupleProfile, PartnerRole } from "@/lib/types";
+
+function formatMinSec(sec: number): string {
+  if (isNaN(sec) || sec < 0) return "00:00";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+export interface TopCoupleBarProps {
+  profile: CoupleProfile;
+  connectionMode: "supabase" | "local-realtime";
+  heartbeatCount: number;
+  telepathySyncScore: number;
+  bothPartnersOnline: boolean;
+  onUpdateProfile: (next: CoupleProfile) => void;
+  onOpenCharacterModal: () => void;
+  onOpenSharedMusicModal?: () => void;
+}
+
+export function TopCoupleBar({
+  profile,
+  connectionMode,
+  heartbeatCount,
+  telepathySyncScore,
+  bothPartnersOnline,
+  onUpdateProfile,
+  onOpenCharacterModal,
+  onOpenSharedMusicModal,
+}: TopCoupleBarProps) {
+  const { isDark, toggleTheme } = useTheme();
+  const {
+    currentTrack,
+    isPlaying: isSharedPlaying,
+    togglePlayPause: toggleSharedPlayPause,
+    currentTime: sharedCurrentTime,
+  } = useSharedMusic();
+  const {
+    playPop,
+  } = useAudio();
+
+  const charA = getSanrioCharacter(profile.userACharacter, "cinnamoroll");
+  const charB = getSanrioCharacter(profile.userBCharacter, "my-melody");
+
+  const switchRole = (role: PartnerRole) => {
+    playPop();
+    onUpdateProfile({ ...profile, role });
+  };
+
+  const handleToggleTheme = () => {
+    playPop();
+    toggleTheme();
+  };
+
+  return (
+    <header className="sticky top-0 z-30 w-full bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 transition-colors">
+      <div className="flex items-center justify-between gap-2.5 px-4 sm:px-6 py-2.5">
+        {/* Mobile Brand / Desktop Room Status Pill */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex lg:hidden h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#BAE6FD]/60 via-white to-[#FECDD3]/60 dark:from-purple-900/40 dark:via-slate-800 dark:to-slate-900 border border-pink-100 dark:border-purple-800 shadow-sm">
+            <img
+              src={isDark ? "/characters/kuromi.svg" : "/characters/cinnamoroll.svg"}
+              alt="Mascot"
+              className="h-7 w-7 object-contain"
+            />
+          </div>
+
+          <div className="lg:hidden min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-extrabold tracking-tight text-[#1E293B] dark:text-white">
+                Cinnamelo
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                <Radio
+                  className={`h-2.5 w-2.5 ${
+                    connectionMode === "supabase"
+                      ? "text-emerald-500"
+                      : "text-sky-400"
+                  }`}
+                />
+                {connectionMode === "supabase" ? "Supabase" : "Live"}
+              </span>
+            </div>
+            <p className="truncate text-[10px] text-slate-400 font-mono">
+              #{profile.roomId}
+            </p>
+          </div>
+
+          {/* Desktop Lingora-Style Room & Live Sync Pill */}
+          <div className="hidden lg:flex items-center gap-2.5 rounded-full bg-[#F5F8FC] dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700 px-4 py-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <Radio
+              className={`h-3.5 w-3.5 ${
+                connectionMode === "supabase"
+                  ? "text-emerald-500"
+                  : "text-sky-500"
+              }`}
+            />
+            <span>
+              Channel:{" "}
+              <strong className="font-mono text-[#1E293B] dark:text-white">
+                {profile.roomId}
+              </strong>
+            </span>
+            <span className="text-slate-300 dark:text-slate-600">•</span>
+            <span
+              className={
+                bothPartnersOnline
+                  ? "font-semibold text-rose-500 dark:text-pink-400"
+                  : "text-slate-400"
+              }
+            >
+              {bothPartnersOnline
+                ? "Pasangan Online Bersama 💖"
+                : "Siap Sinkronisasi 2-Arah"}
+            </span>
+          </div>
+        </div>
+
+        {/* Right Section: Theme Switcher, BGM Player, Stats & Profile */}
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* 2-WAY SYNCHRONIZED SHARED MUSIC BAR (LISTEN TOGETHER) */}
+          {onOpenSharedMusicModal && (
+            <div className="inline-flex items-center rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-pink-200/80 dark:border-slate-700 p-0.5 shadow-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  playPop();
+                  onOpenSharedMusicModal();
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer ${
+                  isSharedPlaying
+                    ? "bg-pink-100 text-rose-700 dark:bg-purple-950/80 dark:text-pink-300"
+                    : "text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white"
+                }`}
+                title="Buka Pemutar Musik Berdua (Listen Together Sync)"
+              >
+                <Disc3
+                  className={`h-3.5 w-3.5 text-pink-500 ${
+                    isSharedPlaying ? "animate-spin [animation-duration:3s]" : ""
+                  }`}
+                />
+                <span className="hidden sm:inline max-w-[110px] truncate text-[11px] font-bold">
+                  {currentTrack?.title || "Playlist Bersama"}
+                </span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-400 font-mono">
+                  {formatMinSec(sharedCurrentTime)}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  playPop();
+                  toggleSharedPlayPause();
+                }}
+                className="p-1 rounded-full text-slate-400 hover:text-rose-500 dark:hover:text-pink-300 cursor-pointer"
+                title={isSharedPlaying ? "Jeda Lagu Bersama" : "Putar Lagu Bersama"}
+              >
+                {isSharedPlaying ? (
+                  <Pause className="h-3.5 w-3.5 fill-rose-500 text-rose-500" />
+                ) : (
+                  <Play className="h-3.5 w-3.5 fill-pink-500 text-pink-500 ml-0.5" />
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* ANIMATED THEME SWITCHER TOGGLE (Light: Day Cloud / Dark: Kuromi Midnight) */}
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.94 }}
+            onClick={handleToggleTheme}
+            className="flex items-center gap-1.5 rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-pink-100 dark:border-slate-700 p-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-pink-200 transition-all shadow-xs"
+            title={
+              isDark
+                ? "Ganti ke Tema Siang (Day Cloud Cinnamoroll ☀️)"
+                : "Ganti ke Tema Malam (Kuromi Midnight 🌙)"
+            }
+          >
+            <div className="relative flex h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-slate-900 border border-pink-100 dark:border-purple-800 shadow-2xs">
+              <img
+                src={
+                  isDark
+                    ? "/characters/kuromi.svg"
+                    : "/characters/cinnamoroll.svg"
+                }
+                alt=""
+                className="h-4 w-4 object-contain"
+              />
+            </div>
+            <span className="hidden md:inline text-[11px] pr-1">
+              {isDark ? "Midnight" : "Day Cloud"}
+            </span>
+            <span className="text-amber-500 dark:text-purple-400 pr-1">
+              {isDark ? (
+                <Moon className="h-3 w-3 fill-purple-400" />
+              ) : (
+                <Sun className="h-3 w-3 fill-amber-400 text-amber-500" />
+              )}
+            </span>
+          </motion.button>
+
+          {/* Streak Badge */}
+          <div
+            className="hidden xl:inline-flex items-center gap-1.5 rounded-full bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-900 px-3 py-1 text-xs font-bold text-amber-700 dark:text-amber-300"
+            title="Gelombang rindu terkirim"
+          >
+            <Flame className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />
+            <span>{heartbeatCount + 3}</span>
+          </div>
+
+          {/* Soulmate Points Pill */}
+          <div
+            className="hidden xl:inline-flex items-center gap-1.5 rounded-full bg-sky-50/90 dark:bg-sky-950/40 border border-sky-200/70 dark:border-sky-900 px-3 py-1 text-xs font-bold text-sky-700 dark:text-sky-300"
+            title="Skor frekuensi pasangan"
+          >
+            <Gem className="h-3.5 w-3.5 fill-sky-300 text-sky-500" />
+            <span>{telepathySyncScore}%</span>
+          </div>
+
+          {/* Partner Role Switcher */}
+          <div className="inline-flex rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-pink-100 dark:border-slate-700 p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => switchRole("user_a")}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold transition-all ${
+                profile.role === "user_a"
+                  ? "bg-[#BAE6FD]/80 text-[#1E293B] dark:bg-sky-900 dark:text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-600 dark:text-slate-500"
+              }`}
+            >
+              <img
+                src={charA.svgPath}
+                alt={charA.name}
+                className="h-4 w-4 object-contain"
+              />
+              <span className="max-w-[62px] truncate">{profile.userAName}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => switchRole("user_b")}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold transition-all ${
+                profile.role === "user_b"
+                  ? "bg-[#FECDD3]/80 text-[#1E293B] dark:bg-pink-900 dark:text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-600 dark:text-slate-500"
+              }`}
+            >
+              <img
+                src={charB.svgPath}
+                alt={charB.name}
+                className="h-4 w-4 object-contain"
+              />
+              <span className="max-w-[62px] truncate">{profile.userBName}</span>
+            </button>
+          </div>
+
+          {/* Settings Modal Button */}
+          <button
+            type="button"
+            onClick={() => {
+              playPop();
+              onOpenCharacterModal();
+            }}
+            aria-label="Pengaturan Pasangan & 19 Karakter Sanrio"
+            title="Pilih dari 19 Karakter Sanrio & Ubah Profil"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-500 hover:border-pink-200 dark:hover:border-purple-600 hover:text-[#1E293B] dark:hover:text-white transition-colors"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}

@@ -1,0 +1,31 @@
+{
+  "name": "sanrio-couple-pwa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimalist Romantic Sanrio Progressive Web App for Couples (Cinnamoroll, My Melody & Kuromi)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@google/genai": "^2.29.1",
+    "@supabase/supabase-js": "^2.49.1",
+    "framer-motion": "^12.4.7",
+    "lucide-react": "^0.477.0",
+    "next": "^15.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3"
+  }
+}
