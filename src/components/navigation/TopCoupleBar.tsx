@@ -132,14 +132,19 @@ export function TopCoupleBar({
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>("default");
 
   useEffect(() => {
-    setNotificationPermission(getNotificationPermission());
+    const updatePerm = () => {
+      setNotificationPermission(getNotificationPermission());
+    };
+    updatePerm();
+    window.addEventListener("focus", updatePerm);
+    return () => window.removeEventListener("focus", updatePerm);
   }, []);
 
   const handleToggleNotification = async () => {
     playPop();
     if (notificationPermission === "granted") {
-      sendDeviceNotification("Notifikasi Cinnamelo Aktif! 🔔💖", {
-        body: "Kamu akan menerima kabar saat pasangan masuk web, kirim chat, atau detak rindu!",
+      sendDeviceNotification("Tes Notifikasi Berhasil! 🔔💖", {
+        body: "Perangkat ini siap menerima kabar saat pasangan masuk web, chat, atau detak rindu!",
       });
       return;
     }
@@ -150,7 +155,7 @@ export function TopCoupleBar({
         body: "Sekarang kamu dan pasangan akan selalu terhubung di HP & Laptop!",
       });
     } else if (res === "denied") {
-      alert("Izin notifikasi diblokir di browser. Buka pengaturan browser (ikon gembok di bilah URL) untuk mengizinkan notifikasi!");
+      alert("Izin notifikasi diblokir di browser. Buka pengaturan browser (ikon gembok 🔒 di bilah URL) lalu pilih 'Izinkan notifikasi'!");
     }
   };
 

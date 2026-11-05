@@ -1,4 +1,4 @@
-const CACHE_NAME = "cinnamelo-pwa-v2";
+const CACHE_NAME = "cinnamelo-pwa-v3";
 const APP_SHELL = ["/manifest.json", "/icons/icon-192.svg", "/icons/icon-512.svg"];
 
 self.addEventListener("install", (event) => {
@@ -26,10 +26,18 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.pathname.startsWith("/api/")) return;
 
-  // Network first for all HTML navigation requests to prevent stale cached UI
-  if (event.request.mode === "navigate") {
+  // Always Network First for HTML navigations and _next JS chunks so code updates deploy immediately!
+  if (event.request.mode === "navigate" || url.pathname.startsWith("/_next/")) {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200 && url.origin === self.location.origin) {
+            const cloned = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cloned));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }
