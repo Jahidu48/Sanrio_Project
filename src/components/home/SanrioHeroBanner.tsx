@@ -22,6 +22,7 @@ export interface SanrioHeroBannerProps {
   bothPartnersOnline: boolean;
   onNavigateTab: (tab: AppTab) => void;
   onOpenCharacterModal: () => void;
+  onSendWaitingPing?: () => void;
 }
 
 const BANNER_STORAGE_KEY = "cinnamelo_hero_banner_v1";
@@ -72,8 +73,10 @@ export function SanrioHeroBanner({
   bothPartnersOnline,
   onNavigateTab,
   onOpenCharacterModal,
+  onSendWaitingPing,
 }: SanrioHeroBannerProps) {
   const { playPop } = useAudio();
+  const [waitingPingSent, setWaitingPingSent] = useState(false);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const [bannerMode, setBannerMode] = useState<"duo" | "landscape">("duo");
 
@@ -264,19 +267,14 @@ export function SanrioHeroBanner({
       {/* 2. Glassmorphic Greeting & Interactive Couple Action Bar */}
       <div className="relative z-10 px-5 sm:px-7 pb-6 pt-1 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-[#BAE6FD]/40 dark:bg-sky-950/60 border border-sky-200/60 dark:border-sky-800 px-3 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300 mb-1.5">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                bothPartnersOnline
-                  ? "bg-rose-500 animate-pulse"
-                  : "bg-sky-400"
-              }`}
-            />
-            <span>
-              {bothPartnersOnline
-                ? "Kalian Sedang Online Bersama 💖"
-                : "Ruang Cinta 2-Arah"}
-            </span>
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-[#BAE6FD]/40 dark:bg-sky-950/60 border border-sky-200/60 dark:border-sky-800 px-3 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300">
+              <span className={`h-2 w-2 rounded-full ${bothPartnersOnline ? "bg-rose-500 animate-pulse" : "bg-sky-400"}`} />
+              <span>{bothPartnersOnline ? "Kalian Sedang Online Bersama 💖" : "Ruang Cinta 2-Arah"}</span>
+            </div>
+            {!bothPartnersOnline && onSendWaitingPing && (
+              <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={() => { playPop(); onSendWaitingPing(); setWaitingPingSent(true); setTimeout(() => setWaitingPingSent(false), 3000); }} className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-pink-500 to-rose-400 hover:from-pink-600 hover:to-rose-500 text-white px-2.5 py-0.5 text-[10px] font-bold shadow-xs cursor-pointer active:scale-95 transition-all" title="Beri tahu pasangan bahwa kamu sedang menunggu di web"><Sparkles className="h-2.5 w-2.5" /><span>{waitingPingSent ? "Panggilan Terkirim! 💌" : "Panggil Pasangan (Aku Menunggu) 💌"}</span></motion.button>
+            )}
           </div>
 
           <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#1E293B] dark:text-white leading-tight">

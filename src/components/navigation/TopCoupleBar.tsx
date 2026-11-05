@@ -5,6 +5,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Battery,
   BatteryCharging,
+  Bell,
+  BellRing,
   Disc3,
   Flame,
   Gem,
@@ -27,6 +29,12 @@ import { useTheme } from "@/context/ThemeContext";
 import { useAudio } from "@/context/AudioContext";
 import { useSharedMusic } from "@/context/SharedMusicContext";
 import type { CoupleProfile, PartnerRole } from "@/lib/types";
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  sendDeviceNotification,
+  type NotificationPermissionState,
+} from "@/lib/notifications";
 
 function formatMinSec(sec: number): string {
   if (isNaN(sec) || sec < 0) return "00:00";
@@ -119,6 +127,31 @@ export function TopCoupleBar({
   const switchRole = (role: PartnerRole) => {
     playPop();
     onUpdateProfile({ ...profile, role });
+  };
+
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>("default");
+
+  useEffect(() => {
+    setNotificationPermission(getNotificationPermission());
+  }, []);
+
+  const handleToggleNotification = async () => {
+    playPop();
+    if (notificationPermission === "granted") {
+      sendDeviceNotification("Notifikasi Cinnamelo Aktif! 🔔💖", {
+        body: "Kamu akan menerima kabar saat pasangan masuk web, kirim chat, atau detak rindu!",
+      });
+      return;
+    }
+    const res = await requestNotificationPermission();
+    setNotificationPermission(res);
+    if (res === "granted") {
+      sendDeviceNotification("Notifikasi Berhasil Diaktifkan! 🔔✨", {
+        body: "Sekarang kamu dan pasangan akan selalu terhubung di HP & Laptop!",
+      });
+    } else if (res === "denied") {
+      alert("Izin notifikasi diblokir di browser. Buka pengaturan browser (ikon gembok di bilah URL) untuk mengizinkan notifikasi!");
+    }
   };
 
   const handleToggleTheme = () => {
@@ -377,6 +410,31 @@ export function TopCoupleBar({
               <span>{batteryInfo.level}%</span>
             </div>
           )}
+
+          {/* Device Push Notification Toggle Button */}
+          <button
+            type="button"
+            onClick={handleToggleNotification}
+            aria-label="Notifikasi Perangkat HP / Laptop"
+            title={
+              notificationPermission === "granted"
+                ? "Notifikasi Perangkat Aktif 🔔 (Klik untuk tes)"
+                : notificationPermission === "denied"
+                ? "Izin Notifikasi Diblokir di Browser (Klik untuk info)"
+                : "Aktifkan Notifikasi Perangkat (Pasangan masuk web, chat, dll)"
+            }
+            className={`flex h-8 w-8 items-center justify-center rounded-full border transition-all ${
+              notificationPermission === "granted"
+                ? "bg-pink-50 dark:bg-pink-950/40 border-pink-300 dark:border-pink-800 text-pink-600 dark:text-pink-300 shadow-2xs"
+                : "bg-[#F8FAFC] dark:bg-slate-800 border-slate-200/80 dark:border-slate-700 text-slate-400 hover:text-pink-500 hover:border-pink-300"
+            }`}
+          >
+            {notificationPermission === "granted" ? (
+              <BellRing className="h-3.5 w-3.5 animate-pulse text-pink-500" />
+            ) : (
+              <Bell className="h-3.5 w-3.5" />
+            )}
+          </button>
 
           {/* Settings Modal Button */}
           <button

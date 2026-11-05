@@ -114,12 +114,27 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     const pendingPlayVideoIdRef = useRef<string | null>(null);
     const channelRef = useRef<any>(null);
     const localBroadcastRef = useRef<BroadcastChannel | null>(null);
+    const videoContainerRef = useRef<HTMLDivElement>(null);
+    const lastSeekTimeRef = useRef<number>(0);
+    const [isFullscreen, setIsFullscreen] = useState(false);
 
     // Keep fresh reference of roomState for asynchronous callbacks (e.g. onStateChange ENDED)
     const roomStateRef = useRef(roomState);
     useEffect(() => {
       roomStateRef.current = roomState;
     }, [roomState]);
+
+    useEffect(() => {
+      const onFsChange = () => {
+        setIsFullscreen(Boolean(document.fullscreenElement));
+      };
+      document.addEventListener("fullscreenchange", onFsChange);
+      document.addEventListener("webkitfullscreenchange", onFsChange);
+      return () => {
+        document.removeEventListener("fullscreenchange", onFsChange);
+        document.removeEventListener("webkitfullscreenchange", onFsChange);
+      };
+    }, []);
 
     // ------------------------------------------------------------------------
     // 1. DYNAMIC YOUTUBE IFRAME JS API INJECTOR
@@ -310,24 +325,50 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
         }
 
         try {
-          if (player.getVideoData && player.getVideoData()?.video_id !== remote.videoId) {
+          const currentVideoId = player.getVideoData?.()?.video_id;
+          const isNewVideo = currentVideoId !== remote.videoId;
+
+          if (isNewVideo) {
             player.loadVideoById({
               videoId: remote.videoId,
-              startSeconds: remote.pausedAtSeconds,
+              startSeconds: remote.pausedAtSeconds || 0,
             });
+            if (remote.isPlaying) {
+              const playPromise = player.playVideo?.();
+              if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch(() => setNeedsUnlock(true));
+              }
+            } else {
+              player.pauseVideo?.();
+            }
+            return;
           }
 
+          // Same video: check state to avoid interrupting buffering on mobile
+          const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
+          const currentPos = typeof player.getCurrentTime === "function" ? player.getCurrentTime() : 0;
+          const targetTime =
+            remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000;
+          const drift = Math.abs(currentPos - targetTime);
+
           if (remote.isPlaying) {
-            const targetTime =
-              remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000;
-            player.seekTo?.(targetTime, true);
-            const playPromise = player.playVideo?.();
-            if (playPromise && typeof playPromise.catch === "function") {
-              playPromise.catch(() => setNeedsUnlock(true));
+            if (playerState !== 1 /* PLAYING */ && playerState !== 3 /* BUFFERING */) {
+              if (drift > 6) {
+                player.seekTo?.(targetTime, true);
+              }
+              const playPromise = player.playVideo?.();
+              if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch(() => setNeedsUnlock(true));
+              }
+            } else if (drift > 18 && playerState !== 3) {
+              // Only seek if drift is severe and not currently buffering
+              player.seekTo?.(targetTime, true);
             }
           } else {
             player.pauseVideo?.();
-            player.seekTo?.(remote.pausedAtSeconds, true);
+            if (remote.pausedAtSeconds >= 0 && Math.abs(currentPos - remote.pausedAtSeconds) > 4) {
+              player.seekTo?.(remote.pausedAtSeconds, true);
+            }
           }
         } catch {
           setNeedsUnlock(true);
@@ -445,6 +486,9 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               } else if (event.data === 2) {
                 // PAUSED
                 setPlayerStatusText("Jeda ⏸️");
+              } else if (event.data === 3) {
+                // BUFFERING
+                setPlayerStatusText("Memuat Video... ⏳");
               } else if (event.data === 0) {
                 // ENDED: Auto-advance queue or reset cleanly
                 handleTrackEnded();
@@ -478,7 +522,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     }, [isApiReady, roomState.isPlaying, roomState.videoId, roomState.pausedAtSeconds, roomState.startedAtServerTime, handleTrackEnded]);
 
     // ------------------------------------------------------------------------
-    // 6. EXACT TIMESTAMP DRIFT CORRECTION (THE DISCORD BOT FORMULA)
+    // 6. EXACT TIMESTAMP DRIFT CORRECTION (SAFE & RELAXED FOR MOBILE)
     // ------------------------------------------------------------------------
     useEffect(() => {
       if (!roomState.isPlaying) return;
@@ -489,23 +533,35 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
 
         const currentPos = player.getCurrentTime();
         setCurrentTime(currentPos);
-        setDuration(player.getDuration() || duration);
+        const dur = typeof player.getDuration === "function" ? player.getDuration() : 0;
+        if (dur && dur > 0) {
+          setDuration(dur);
+        }
+
+        // Never interrupt when player is buffering (3) or unstarted (-1)
+        const state = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
+        if (state === 3 || state === -1) {
+          return;
+        }
 
         const targetTime =
           roomState.pausedAtSeconds +
           (Date.now() - roomState.startedAtServerTime) / 1000;
 
         const drift = Math.abs(currentPos - targetTime);
+        const now = Date.now();
 
-        if (drift > 12) {
+        // 18s drift threshold and 15s cooldown to avoid infinite seek loop from device clock skew
+        if (drift > 18 && now - lastSeekTimeRef.current > 15000) {
+          lastSeekTimeRef.current = now;
           player.seekTo(targetTime, true);
           player.playVideo();
           setPlayerStatusText(`Sinkronisasi Jockie Bot (drift: ${drift.toFixed(1)}s)`);
         }
-      }, 2500);
+      }, 3000);
 
       return () => window.clearInterval(interval);
-    }, [roomState.isPlaying, roomState.startedAtServerTime, roomState.pausedAtSeconds, duration]);
+    }, [roomState.isPlaying, roomState.startedAtServerTime, roomState.pausedAtSeconds]);
 
     // ------------------------------------------------------------------------
     // 7. COMMAND HANDLER IMPLEMENTATION (!play, !stop, !pause, !resume, !sync, !skip)
@@ -800,6 +856,48 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
       }
     };
 
+    const handleToggleFullscreen = () => {
+      const el = videoContainerRef.current;
+      if (!el) return;
+      try {
+        if (!document.fullscreenElement) {
+          if (el.requestFullscreen) {
+            el.requestFullscreen().catch(() => {});
+          } else if ((el as any).webkitRequestFullscreen) {
+            (el as any).webkitRequestFullscreen();
+          }
+        } else {
+          if (document.exitFullscreen) {
+            document.exitFullscreen().catch(() => {});
+          } else if ((document as any).webkitExitFullscreen) {
+            (document as any).webkitExitFullscreen();
+          }
+        }
+      } catch (e) {
+        console.warn("Fullscreen toggle failed", e);
+      }
+    };
+
+    const handleRefreshPlayer = () => {
+      const player = playerRef.current;
+      if (!player) return;
+      try {
+        const curTime = player.getCurrentTime?.() || 0;
+        const vidId = roomState.videoId;
+        if (vidId && player.loadVideoById) {
+          player.loadVideoById({
+            videoId: vidId,
+            startSeconds: curTime > 0 ? curTime : roomState.pausedAtSeconds,
+          });
+          player.unMute?.();
+          player.playVideo?.();
+          setPlayerStatusText("Video disegarkan & sinkron 🎬");
+        }
+      } catch (e) {
+        console.warn("Refresh failed", e);
+      }
+    };
+
     // ------------------------------------------------------------------------
     // 8. QUEUE MANAGEMENT ACTIONS ("Tambah ke Antrean" & "Putar Setelah Ini")
     // ------------------------------------------------------------------------
@@ -911,11 +1009,11 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           Rendered permanently in DOM so playback NEVER stops across tab changes.
         */}
         <div
-          className={`transition-all duration-300 z-40 ${
+          className={
             isExpanded
-              ? "fixed inset-x-4 top-20 sm:top-24 sm:right-6 sm:left-auto sm:w-96 rounded-3xl bg-slate-950 p-3 shadow-2xl border border-pink-300/40"
-              : "fixed -left-[9999px] top-0 w-80 h-48 opacity-10 pointer-events-none overflow-hidden"
-          }`}
+              ? "fixed inset-x-3 sm:inset-x-auto sm:right-6 top-20 sm:top-24 sm:w-96 rounded-3xl bg-slate-950/95 backdrop-blur-md p-2.5 sm:p-3 shadow-2xl border border-pink-400/40 z-50 transition-opacity duration-150"
+              : "fixed bottom-0 right-0 w-[160px] h-[90px] opacity-[0.001] pointer-events-none -z-50 overflow-hidden"
+          }
         >
           {isExpanded && (
             <div className="flex items-center justify-between pb-2 text-white text-xs px-1">
@@ -923,17 +1021,48 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
                 <Youtube className="h-4 w-4 text-red-500" />
                 Live Video Screen
               </span>
-              <button
-                type="button"
-                onClick={() => setIsExpanded(false)}
-                className="p-1 hover:bg-white/20 rounded-full cursor-pointer"
-              >
-                <Minimize2 className="h-3.5 w-3.5" />
-              </button>
+
+              <div className="flex items-center gap-1.5">
+                {/* Segarkan / Unfreeze Button */}
+                <button
+                  type="button"
+                  onClick={handleRefreshPlayer}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-medium border border-slate-700 cursor-pointer transition-colors"
+                  title="Segarkan pemutaran video jika mengalami buffering di HP"
+                >
+                  <RotateCcw className="h-2.5 w-2.5" />
+                  <span>Segarkan</span>
+                </button>
+
+                {/* Fullscreen Toggle Button */}
+                <button
+                  type="button"
+                  onClick={handleToggleFullscreen}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-400 hover:from-pink-600 hover:to-rose-500 text-white text-[10px] font-bold shadow-xs cursor-pointer active:scale-95 transition-all"
+                  title={isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh (Lancar di HP)"}
+                >
+                  <Maximize2 className="h-2.5 w-2.5" />
+                  <span>{isFullscreen ? "Kecilkan" : "Layar Penuh"}</span>
+                </button>
+
+                {/* Minimize / Close Popup Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(false)}
+                  className="p-1 hover:bg-white/20 rounded-full cursor-pointer text-slate-400 hover:text-white"
+                  title="Tutup Popup Video"
+                >
+                  <Minimize2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           )}
 
-          <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-inner">
+          <div
+            ref={videoContainerRef}
+            className="aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-inner relative"
+            style={{ transform: "translateZ(0)", willChange: "transform" }}
+          >
             <div id="global-jockie-yt-player" className="h-full w-full" />
           </div>
         </div>

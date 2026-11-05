@@ -33,6 +33,7 @@ import type {
   WebRTCSignalMessage,
 } from "@/lib/types";
 import type { SanrioCharacterId } from "@/lib/sanrioCharacters";
+import { notifyPartnerWaiting } from "@/lib/notifications";
 
 interface UseCoupleRealtimeOptions {
   profile: CoupleProfile;
@@ -692,6 +693,12 @@ export function useCoupleRealtime({
             }
           }
         })
+        .on("broadcast", { event: "partner-waiting-ping" }, ({ payload }) => {
+          const p = payload as { senderRole: PartnerRole; senderName: string };
+          if (p && p.senderRole !== profile.role) {
+            notifyPartnerWaiting(p.senderName);
+          }
+        })
         .on("presence", { event: "sync" }, () => {
           const state = channel.presenceState<{
             role: PartnerRole;
@@ -887,6 +894,13 @@ export function useCoupleRealtime({
             } catch {
               // ignore
             }
+          }
+          break;
+        }
+        case "partner-waiting-ping": {
+          const p = msg.payload as { senderRole: PartnerRole; senderName: string };
+          if (p && p.senderRole !== profile.role) {
+            notifyPartnerWaiting(p.senderName);
           }
           break;
         }
@@ -1760,15 +1774,27 @@ export function useCoupleRealtime({
     ).length;
   }, [chatMessages, profile.role]);
 
+  const sendPartnerWaitingPing = useCallback(() => {
+    const senderName =
+      profile.role === "user_a" ? profile.userAName : profile.userBName;
+    emitRealtime("partner-waiting-ping", {
+      senderRole: profile.role,
+      senderName,
+      sentAt: Date.now(),
+    });
+  }, [emitRealtime, profile.role, profile.userAName, profile.userBName]);
+
   const bothPartnersOnline =
     simulatePartnerOnline ||
     (onlineRoles.has("user_a") && onlineRoles.has("user_b"));
 
   return {
     connectionMode,
+    onlineRoles,
     bothPartnersOnline,
     simulatePartnerOnline,
     setSimulatePartnerOnline,
+    sendPartnerWaitingPing,
     todayQnA,
     stamps,
     partnerCursor,

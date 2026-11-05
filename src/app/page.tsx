@@ -33,6 +33,13 @@ import { SanrioAiCompanionModal } from "@/components/ai/SanrioAiCompanionModal";
 import { useCoupleRealtime } from "@/hooks/useCoupleRealtime";
 import { useAudio } from "@/context/AudioContext";
 import {
+  notifyPartnerOnline,
+  notifyPartnerWaiting,
+  notifyHeartbeat,
+  notifyChatMessage,
+  notifyIncomingCall,
+} from "@/lib/notifications";
+import {
   SANRIO_CHARACTER_MAP,
   type SanrioCharacterId,
 } from "@/lib/sanrioCharacters";
@@ -189,6 +196,10 @@ export default function CoupleSpaceDashboard() {
       setActiveToast(event);
       playChime();
 
+      if (event.senderRole !== profile.role && typeof document !== "undefined" && document.hidden) {
+        notifyHeartbeat(event.senderName);
+      }
+
       if (typeof navigator !== "undefined" && "vibrate" in navigator) {
         try {
           navigator.vibrate([100, 50, 100]);
@@ -211,9 +222,11 @@ export default function CoupleSpaceDashboard() {
 
   const {
     connectionMode,
+    onlineRoles,
     bothPartnersOnline,
     simulatePartnerOnline,
     setSimulatePartnerOnline,
+    sendPartnerWaitingPing,
     todayQnA,
     stamps,
     partnerCursor,
@@ -271,8 +284,20 @@ export default function CoupleSpaceDashboard() {
     onRemoteMiniDoodleClear: () => {
       miniDoodleRefHandle.current?.clearCanvas();
     },
-    onIncomingChatMessage: () => {
+    onIncomingChatMessage: (msg) => {
       playChime();
+      if (typeof document !== "undefined" && (document.hidden || activeTab !== "chat")) {
+        const textPreview =
+          msg.text ||
+          (msg.type === "image"
+            ? "Mengirim foto 📷"
+            : msg.type === "audio"
+            ? "Pesan suara 🎤"
+            : msg.type === "location"
+            ? "Membagikan lokasi 📍"
+            : "Mengirim pesan ✨");
+        notifyChatMessage(msg.sender_name, textPreview);
+      }
     },
   });
 
@@ -287,6 +312,35 @@ export default function CoupleSpaceDashboard() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [activeTab]);
+
+  const partnerRole = profile.role === "user_a" ? "user_b" : "user_a";
+  const partnerName = profile.role === "user_a" ? profile.userBName : profile.userAName;
+
+  const wasPartnerOnlineRef = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    const isPartnerOnline = Boolean(onlineRoles?.has(partnerRole));
+    if (wasPartnerOnlineRef.current === null) {
+      wasPartnerOnlineRef.current = isPartnerOnline;
+      if (isPartnerOnline) {
+        notifyPartnerWaiting(partnerName);
+      }
+      return;
+    }
+    if (!wasPartnerOnlineRef.current && isPartnerOnline) {
+      notifyPartnerOnline(partnerName);
+    }
+    wasPartnerOnlineRef.current = isPartnerOnline;
+  }, [onlineRoles, partnerRole, partnerName]);
+
+  useEffect(() => {
+    if (activeIncomingCall && activeIncomingCall.type === "call-offer") {
+      notifyIncomingCall(
+        activeIncomingCall.caller_name,
+        activeIncomingCall.call_type || "audio"
+      );
+    }
+  }, [activeIncomingCall]);
 
   const myAnswerMissing =
     profile.role === "user_a"
