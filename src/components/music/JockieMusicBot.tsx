@@ -26,6 +26,7 @@ import {
   Plus,
   Radio,
   RotateCcw,
+  RotateCw,
   SkipForward,
   Sparkles,
   Square,
@@ -108,10 +109,12 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     const [showQueue, setShowQueue] = useState(false);
     const [queueInputUrl, setQueueInputUrl] = useState("");
     const [embedErrorNotice, setEmbedErrorNotice] = useState(false);
+    const [isBuffering, setIsBuffering] = useState(false);
 
     const playerRef = useRef<any>(null);
     const isPlayerInitializedRef = useRef(false);
     const pendingPlayVideoIdRef = useRef<string | null>(null);
+    const bufferingWatchdogRef = useRef<NodeJS.Timeout | null>(null);
     const channelRef = useRef<any>(null);
     const localBroadcastRef = useRef<BroadcastChannel | null>(null);
 
@@ -412,6 +415,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
             rel: 0,
             fs: 1,
             playsinline: 1,
+            enablejsapi: 1,
             origin: typeof window !== "undefined" ? window.location.origin : "",
           },
           events: {
@@ -438,16 +442,41 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               }
             },
             onStateChange: (event: any) => {
+              if (bufferingWatchdogRef.current) {
+                clearTimeout(bufferingWatchdogRef.current);
+                bufferingWatchdogRef.current = null;
+              }
+
               if (event.data === 1) {
                 // PLAYING
+                setIsBuffering(false);
                 setNeedsUnlock(false);
                 setEmbedErrorNotice(false);
                 setPlayerStatusText("Sedang Memutar... 🎵");
               } else if (event.data === 2) {
                 // PAUSED
+                setIsBuffering(false);
                 setPlayerStatusText("Jeda ⏸️");
+              } else if (event.data === 3) {
+                // BUFFERING
+                setIsBuffering(true);
+                setPlayerStatusText("Memuat Video... ⏳");
+                // Watchdog: If stuck buffering for > 2.5s on mobile, break the MSE deadlock
+                bufferingWatchdogRef.current = setTimeout(() => {
+                  const p = playerRef.current;
+                  if (p && typeof p.getPlayerState === "function" && p.getPlayerState() === 3) {
+                    const freshRoom = roomStateRef.current;
+                    const targetTime = freshRoom.isPlaying
+                      ? freshRoom.pausedAtSeconds + (Date.now() - freshRoom.startedAtServerTime) / 1000
+                      : (p.getCurrentTime?.() || 0);
+                    console.warn("[JockieYT] Buffering watchdog recovering at", targetTime);
+                    p.seekTo?.(targetTime, true);
+                    p.playVideo?.();
+                  }
+                }, 2500);
               } else if (event.data === 0) {
                 // ENDED: Auto-advance queue or reset cleanly
+                setIsBuffering(false);
                 handleTrackEnded();
               }
             },
@@ -497,16 +526,11 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           (Date.now() - roomState.startedAtServerTime) / 1000;
 
         const drift = Math.abs(currentPos - targetTime);
-        const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
-        // YT.PlayerState: -1 (unstarted), 0 (ended), 1 (playing), 2 (paused), 3 (buffering), 5 (cued)
-        const isBuffering = playerState === 3;
         const now = Date.now();
 
-        // Anti-buffering loop on mobile devices:
-        // 1. Drift threshold relaxed to 5s (mobile video decoding initialization causes short 1-2s frame lags).
-        // 2. Never trigger seekTo if player is actively buffering.
-        // 3. Enforce an 8-second cooldown between auto-seeks to allow stream buffering to complete smoothly.
-        if (drift > 5 && !isBuffering && now - lastSeekTimeRef.current > 8000) {
+        // If drift exceeds 4s and cooldown passed (6s):
+        // Resync to correct timestamp to break any frozen buffers and keep both screens synchronized
+        if (drift > 4 && now - lastSeekTimeRef.current > 6000) {
           lastSeekTimeRef.current = now;
           player.seekTo(targetTime, true);
           player.playVideo();
@@ -516,6 +540,34 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
 
       return () => window.clearInterval(interval);
     }, [roomState.isPlaying, roomState.startedAtServerTime, roomState.pausedAtSeconds, duration]);
+
+    // ------------------------------------------------------------------------
+    // AUTO-UNFREEZE VIDEO SURFACE WHEN EXPANDING ON MOBILE
+    // ------------------------------------------------------------------------
+    useEffect(() => {
+      if (!isExpanded) return;
+      const player = playerRef.current;
+      if (!player || typeof player.getPlayerState !== "function") return;
+
+      const unfreezeTimer = setTimeout(() => {
+        try {
+          const freshRoom = roomStateRef.current;
+          const targetTime = freshRoom.isPlaying
+            ? freshRoom.pausedAtSeconds + (Date.now() - freshRoom.startedAtServerTime) / 1000
+            : (player.getCurrentTime?.() || 0);
+
+          player.seekTo?.(targetTime, true);
+          if (freshRoom.isPlaying) {
+            player.unMute?.();
+            player.playVideo?.();
+          }
+        } catch (err) {
+          console.warn("[JockieYT] Error during expand unfreeze:", err);
+        }
+      }, 250);
+
+      return () => clearTimeout(unfreezeTimer);
+    }, [isExpanded]);
 
     // ------------------------------------------------------------------------
     // 7. COMMAND HANDLER IMPLEMENTATION (!play, !stop, !pause, !resume, !sync, !skip)
@@ -790,6 +842,26 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
       }
     };
 
+    // Force resync and unfreeze video stream
+    const handleForceResyncVideo = useCallback(() => {
+      const player = playerRef.current;
+      if (!player) return;
+      const freshRoom = roomStateRef.current;
+      const targetTime = freshRoom.isPlaying
+        ? freshRoom.pausedAtSeconds + (Date.now() - freshRoom.startedAtServerTime) / 1000
+        : (player.getCurrentTime?.() || 0);
+
+      try {
+        setIsBuffering(false);
+        player.unMute?.();
+        player.seekTo?.(targetTime, true);
+        player.playVideo?.();
+        setPlayerStatusText(`Video disegarkan (${targetTime.toFixed(1)}s) 🎬`);
+      } catch (e) {
+        console.warn("Force resync error", e);
+      }
+    }, []);
+
     const togglePlayPause = () => {
       if (roomState.isPlaying) {
         executeCommand("!pause");
@@ -933,17 +1005,41 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               <Youtube className="h-4 w-4 text-red-500" />
               Live Video Screen
             </span>
-            <button
-              type="button"
-              onClick={() => setIsExpanded(false)}
-              className="p-1 hover:bg-white/20 rounded-full cursor-pointer"
-            >
-              <Minimize2 className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleForceResyncVideo}
+                className="px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-pink-300 hover:text-white flex items-center gap-1 text-[11px] cursor-pointer transition-colors"
+                title="Segarkan / Atasi Loading Video"
+              >
+                <RotateCw className="h-3 w-3" />
+                <span>Segarkan</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsExpanded(false)}
+                className="p-1 hover:bg-white/20 rounded-full cursor-pointer text-slate-300 hover:text-white"
+                title="Tutup Layar Video"
+              >
+                <Minimize2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
 
-          <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-inner">
+          <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-inner">
             <div id="global-jockie-yt-player" className="h-full w-full" />
+
+            {/* Quick Unfreeze Floating Overlay if Buffering */}
+            {isBuffering && isExpanded && (
+              <button
+                type="button"
+                onClick={handleForceResyncVideo}
+                className="absolute inset-x-0 bottom-3 mx-auto w-fit px-3.5 py-1.5 rounded-full bg-pink-600/90 hover:bg-pink-500 text-white text-xs font-semibold shadow-xl backdrop-blur-md flex items-center gap-1.5 cursor-pointer z-50 animate-pulse border border-pink-300/40"
+              >
+                <RotateCw className="h-3.5 w-3.5" />
+                <span>Ketuk jika video macet / loading</span>
+              </button>
+            )}
           </div>
         </div>
 
