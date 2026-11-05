@@ -447,8 +447,6 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
                 iframe.style.width = "100%";
                 iframe.style.height = "100%";
                 iframe.style.border = "none";
-                iframe.style.transform = "translateZ(0)";
-                iframe.style.webkitTransform = "translateZ(0)";
               }
 
               if (pendingPlayVideoIdRef.current) {
@@ -807,20 +805,22 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
       }
     };
 
-    // Force resume video stream without wiping the buffer
+    // Force resume and resync video stream with audio playhead
     const handleForceResyncVideo = useCallback(() => {
       const player = playerRef.current;
       if (!player) return;
 
       try {
         setIsBuffering(false);
+        const curPos = player.getCurrentTime ? player.getCurrentTime() : currentTime;
         player.unMute?.();
+        player.seekTo?.(curPos, true);
         player.playVideo?.();
-        setPlayerStatusText("Video dilanjutkan 🎬");
+        setPlayerStatusText("Video disegarkan & sinkron 🎬");
       } catch (e) {
         console.warn("Force resync error", e);
       }
-    }, []);
+    }, [currentTime]);
 
     // Fullscreen toggle for optimal mobile hardware video playback
     const handleToggleFullscreen = useCallback(() => {
@@ -829,12 +829,20 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
       if (!iframe) return;
 
       try {
-        if (iframe.requestFullscreen) {
-          iframe.requestFullscreen();
-        } else if ((iframe as any).webkitRequestFullscreen) {
-          (iframe as any).webkitRequestFullscreen();
-        } else if ((iframe as any).webkitEnterFullscreen) {
-          (iframe as any).webkitEnterFullscreen();
+        if (typeof document !== "undefined" && (document.fullscreenElement || (document as any).webkitFullscreenElement)) {
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          } else if ((document as any).webkitExitFullscreen) {
+            (document as any).webkitExitFullscreen();
+          }
+        } else {
+          if (iframe.requestFullscreen) {
+            iframe.requestFullscreen();
+          } else if ((iframe as any).webkitRequestFullscreen) {
+            (iframe as any).webkitRequestFullscreen();
+          } else if ((iframe as any).webkitEnterFullscreen) {
+            (iframe as any).webkitEnterFullscreen();
+          }
         }
       } catch (e) {
         console.warn("Fullscreen request error:", e);
@@ -981,7 +989,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           className={`fixed z-40 transition-opacity duration-150 ${
             isExpanded
               ? "inset-x-3 top-20 sm:top-24 sm:right-6 sm:left-auto sm:w-96 rounded-2xl bg-slate-950 p-2.5 border border-pink-400/40 shadow-xl opacity-100 pointer-events-auto"
-              : "w-1 h-1 bottom-0 right-0 opacity-0 pointer-events-none -z-50"
+              : "w-80 sm:w-96 -left-[200vw] top-0 opacity-0 pointer-events-none -z-50"
           }`}
         >
           <div className="flex items-center justify-between pb-2 text-white text-xs px-1">
@@ -1024,7 +1032,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
             </div>
           </div>
 
-          <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black">
+          <div className="relative w-full pb-[56.25%] bg-black rounded-xl overflow-hidden">
             <div
               id="global-jockie-yt-player"
               className="absolute inset-0 w-full h-full"
@@ -1119,7 +1127,11 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
                       setIsExpanded(next);
                       if (next && playerRef.current) {
                         try {
-                          playerRef.current.playVideo?.();
+                          const player = playerRef.current;
+                          const curPos = player.getCurrentTime ? player.getCurrentTime() : currentTime;
+                          player.unMute?.();
+                          player.seekTo?.(curPos, true);
+                          player.playVideo?.();
                         } catch {}
                       }
                     }}
