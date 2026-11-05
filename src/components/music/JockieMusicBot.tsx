@@ -26,7 +26,6 @@ import {
   Plus,
   Radio,
   RotateCcw,
-  RotateCw,
   SkipForward,
   Sparkles,
   Square,
@@ -109,7 +108,6 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     const [showQueue, setShowQueue] = useState(false);
     const [queueInputUrl, setQueueInputUrl] = useState("");
     const [embedErrorNotice, setEmbedErrorNotice] = useState(false);
-    const [isBuffering, setIsBuffering] = useState(false);
 
     const playerRef = useRef<any>(null);
     const isPlayerInitializedRef = useRef(false);
@@ -312,46 +310,24 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
         }
 
         try {
-          const currentVidData = player.getVideoData ? player.getVideoData() : null;
-          const isSameVideo = currentVidData?.video_id && currentVidData.video_id === remote.videoId;
-          const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
-          const isActivelyActive = playerState === 1 || playerState === 3; // playing or actively buffering
-
-          if (!isSameVideo) {
-            const targetTime = Math.max(
-              0,
-              remote.pausedAtSeconds +
-                (remote.isPlaying ? (Date.now() - remote.startedAtServerTime) / 1000 : 0)
-            );
+          if (player.getVideoData && player.getVideoData()?.video_id !== remote.videoId) {
             player.loadVideoById({
               videoId: remote.videoId,
-              startSeconds: targetTime,
+              startSeconds: remote.pausedAtSeconds,
             });
-            if (remote.isPlaying) {
-              const playPromise = player.playVideo?.();
-              if (playPromise && typeof playPromise.catch === "function") {
-                playPromise.catch(() => setNeedsUnlock(true));
-              }
+          }
+
+          if (remote.isPlaying) {
+            const targetTime =
+              remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000;
+            player.seekTo?.(targetTime, true);
+            const playPromise = player.playVideo?.();
+            if (playPromise && typeof playPromise.catch === "function") {
+              playPromise.catch(() => setNeedsUnlock(true));
             }
           } else {
-            // Same video
-            if (remote.isPlaying) {
-              // Only seek if NOT currently playing or buffering (avoids wiping active mobile video buffer)
-              if (!isActivelyActive) {
-                const targetTime = Math.max(
-                  0,
-                  remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000
-                );
-                player.seekTo?.(targetTime, true);
-              }
-              const playPromise = player.playVideo?.();
-              if (playPromise && typeof playPromise.catch === "function") {
-                playPromise.catch(() => setNeedsUnlock(true));
-              }
-            } else {
-              player.pauseVideo?.();
-              player.seekTo?.(remote.pausedAtSeconds, true);
-            }
+            player.pauseVideo?.();
+            player.seekTo?.(remote.pausedAtSeconds, true);
           }
         } catch {
           setNeedsUnlock(true);
@@ -435,7 +411,6 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
             rel: 0,
             fs: 1,
             playsinline: 1,
-            enablejsapi: 1,
             origin: typeof window !== "undefined" ? window.location.origin : "",
           },
           events: {
@@ -444,23 +419,6 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               isPlayerInitializedRef.current = true;
               setDuration(event.target.getDuration() || 0);
               setPlayerStatusText("Jockie Bot Terhubung 🎵");
-
-              const iframe = event.target.getIframe?.();
-              if (iframe) {
-                iframe.setAttribute(
-                  "allow",
-                  "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-                );
-                iframe.setAttribute("allowfullscreen", "true");
-                iframe.setAttribute("playsinline", "1");
-                iframe.setAttribute("webkit-playsinline", "1");
-                iframe.style.position = "absolute";
-                iframe.style.top = "0";
-                iframe.style.left = "0";
-                iframe.style.width = "100%";
-                iframe.style.height = "100%";
-                iframe.style.border = "none";
-              }
 
               if (pendingPlayVideoIdRef.current) {
                 const vid = pendingPlayVideoIdRef.current;
@@ -481,21 +439,14 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
             onStateChange: (event: any) => {
               if (event.data === 1) {
                 // PLAYING
-                setIsBuffering(false);
                 setNeedsUnlock(false);
                 setEmbedErrorNotice(false);
                 setPlayerStatusText("Sedang Memutar... 🎵");
               } else if (event.data === 2) {
                 // PAUSED
-                setIsBuffering(false);
                 setPlayerStatusText("Jeda ⏸️");
-              } else if (event.data === 3) {
-                // BUFFERING (Normal network loading)
-                setIsBuffering(true);
-                setPlayerStatusText("Memuat Video... ⏳");
               } else if (event.data === 0) {
                 // ENDED: Auto-advance queue or reset cleanly
-                setIsBuffering(false);
                 handleTrackEnded();
               }
             },
@@ -527,7 +478,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     }, [isApiReady, roomState.isPlaying, roomState.videoId, roomState.pausedAtSeconds, roomState.startedAtServerTime, handleTrackEnded]);
 
     // ------------------------------------------------------------------------
-    // 6. CONTINUOUS PLAYBACK POSITION TRACKING (NO AUTO-SEEK LOOP!)
+    // 6. EXACT TIMESTAMP DRIFT CORRECTION (THE DISCORD BOT FORMULA)
     // ------------------------------------------------------------------------
     useEffect(() => {
       if (!roomState.isPlaying) return;
@@ -539,11 +490,22 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
         const currentPos = player.getCurrentTime();
         setCurrentTime(currentPos);
         setDuration(player.getDuration() || duration);
-      }, 1000);
+
+        const targetTime =
+          roomState.pausedAtSeconds +
+          (Date.now() - roomState.startedAtServerTime) / 1000;
+
+        const drift = Math.abs(currentPos - targetTime);
+
+        if (drift > 12) {
+          player.seekTo(targetTime, true);
+          player.playVideo();
+          setPlayerStatusText(`Sinkronisasi Jockie Bot (drift: ${drift.toFixed(1)}s)`);
+        }
+      }, 2500);
 
       return () => window.clearInterval(interval);
-    }, [roomState.isPlaying, duration]);
-
+    }, [roomState.isPlaying, roomState.startedAtServerTime, roomState.pausedAtSeconds, duration]);
 
     // ------------------------------------------------------------------------
     // 7. COMMAND HANDLER IMPLEMENTATION (!play, !stop, !pause, !resume, !sync, !skip)
@@ -818,48 +780,6 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
       }
     };
 
-    // Force resume and resync video stream with audio playhead
-    const handleForceResyncVideo = useCallback(() => {
-      const player = playerRef.current;
-      if (!player) return;
-
-      try {
-        setIsBuffering(false);
-        player.unMute?.();
-        player.playVideo?.();
-        setPlayerStatusText("Video dilanjutkan 🎬");
-      } catch (e) {
-        console.warn("Force resync error", e);
-      }
-    }, []);
-
-    // Fullscreen toggle for optimal mobile hardware video playback
-    const handleToggleFullscreen = useCallback(() => {
-      const player = playerRef.current;
-      const iframe = player?.getIframe?.() || document.getElementById("global-jockie-yt-player");
-      if (!iframe) return;
-
-      try {
-        if (typeof document !== "undefined" && (document.fullscreenElement || (document as any).webkitFullscreenElement)) {
-          if (document.exitFullscreen) {
-            document.exitFullscreen();
-          } else if ((document as any).webkitExitFullscreen) {
-            (document as any).webkitExitFullscreen();
-          }
-        } else {
-          if (iframe.requestFullscreen) {
-            iframe.requestFullscreen();
-          } else if ((iframe as any).webkitRequestFullscreen) {
-            (iframe as any).webkitRequestFullscreen();
-          } else if ((iframe as any).webkitEnterFullscreen) {
-            (iframe as any).webkitEnterFullscreen();
-          }
-        }
-      } catch (e) {
-        console.warn("Fullscreen request error:", e);
-      }
-    }, []);
-
     const togglePlayPause = () => {
       if (roomState.isPlaying) {
         executeCommand("!pause");
@@ -989,80 +909,33 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
         {/* 
           1. PERSISTENT YOUTUBE IFRAME CONTAINER 
           Rendered permanently in DOM so playback NEVER stops across tab changes.
-          Kept in place without repositioning to -9999px (which tears down mobile video HW decode pipelines).
-        */}
-        {/* 
-          1. PERSISTENT YOUTUBE IFRAME CONTAINER 
-          Rendered permanently in DOM so playback NEVER stops across tab changes.
-          Clean layout without conflicting CSS 3D transforms that break mobile video pipelines.
         */}
         <div
-          className={`fixed z-40 transition-opacity duration-150 ${
+          className={`transition-all duration-300 z-40 ${
             isExpanded
-              ? "inset-x-3 top-20 sm:top-24 sm:right-6 sm:left-auto sm:w-96 rounded-2xl bg-slate-950 p-2.5 border border-pink-400/40 shadow-xl opacity-100 pointer-events-auto"
-              : "bottom-2 right-2 w-48 h-28 opacity-0 pointer-events-none -z-50"
+              ? "fixed inset-x-4 top-20 sm:top-24 sm:right-6 sm:left-auto sm:w-96 rounded-3xl bg-slate-950 p-3 shadow-2xl border border-pink-300/40"
+              : "fixed -left-[9999px] top-0 w-80 h-48 opacity-10 pointer-events-none overflow-hidden"
           }`}
         >
-          <div className="flex items-center justify-between pb-2 text-white text-xs px-1">
-            <span className="font-bold flex items-center gap-1.5">
-              <Youtube className="h-4 w-4 text-red-500" />
-              Live Video Screen
-              {isBuffering && (
-                <span className="text-[10px] text-amber-300 font-normal">
-                  (Memuat...)
-                </span>
-              )}
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleForceResyncVideo}
-                className="px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-pink-300 hover:text-white flex items-center gap-1 text-[11px] cursor-pointer transition-colors"
-                title="Segarkan Video"
-              >
-                <RotateCw className="h-3 w-3" />
-                <span>Segarkan</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleToggleFullscreen}
-                className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-medium flex items-center gap-1 text-[11px] shadow-xs cursor-pointer active:scale-95"
-                title="Buka Layar Penuh (Fullscreen)"
-              >
-                <Maximize2 className="h-3 w-3" />
-                <span>Layar Penuh</span>
-              </button>
+          {isExpanded && (
+            <div className="flex items-center justify-between pb-2 text-white text-xs px-1">
+              <span className="font-bold flex items-center gap-1.5">
+                <Youtube className="h-4 w-4 text-red-500" />
+                Live Video Screen
+              </span>
               <button
                 type="button"
                 onClick={() => setIsExpanded(false)}
-                className="p-1 hover:bg-white/20 rounded-full cursor-pointer text-slate-300 hover:text-white"
-                title="Tutup Layar Video"
+                className="p-1 hover:bg-white/20 rounded-full cursor-pointer"
               >
                 <Minimize2 className="h-3.5 w-3.5" />
               </button>
             </div>
-          </div>
-
-          <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black">
-            <div
-              id="global-jockie-yt-player"
-              className="absolute inset-0 w-full h-full"
-            />
-          </div>
-
-          {/* Quick One-Tap Fullscreen Helper for Mobile */}
-          {isBuffering && (
-            <div className="mt-1.5 px-1 py-1 flex items-center justify-between text-[10px] text-pink-300 bg-pink-950/50 rounded-lg border border-pink-500/20">
-              <span className="truncate">Di HP loading? Ketuk Layar Penuh 🎬</span>
-              <button
-                type="button"
-                onClick={handleToggleFullscreen}
-                className="shrink-0 font-bold underline text-white hover:text-pink-200 cursor-pointer ml-1"
-              >
-                Buka Penuh ↗
-              </button>
-            </div>
           )}
+
+          <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-inner">
+            <div id="global-jockie-yt-player" className="h-full w-full" />
+          </div>
         </div>
 
         {/* 
@@ -1147,16 +1020,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
                   {/* Show Video Screen Button */}
                   <button
                     type="button"
-                    onClick={() => {
-                      const next = !isExpanded;
-                      setIsExpanded(next);
-                      if (next && playerRef.current) {
-                        try {
-                          playerRef.current.unMute?.();
-                          playerRef.current.playVideo?.();
-                        } catch {}
-                      }
-                    }}
+                    onClick={() => setIsExpanded(!isExpanded)}
                     className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
                     title={isExpanded ? "Sembunyikan Video" : "Lihat Video"}
                   >
