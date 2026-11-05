@@ -432,6 +432,25 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               setDuration(event.target.getDuration() || 0);
               setPlayerStatusText("Jockie Bot Terhubung 🎵");
 
+              const iframe = event.target.getIframe?.();
+              if (iframe) {
+                iframe.setAttribute(
+                  "allow",
+                  "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+                );
+                iframe.setAttribute("allowfullscreen", "true");
+                iframe.setAttribute("playsinline", "1");
+                iframe.setAttribute("webkit-playsinline", "1");
+                iframe.style.position = "absolute";
+                iframe.style.top = "0";
+                iframe.style.left = "0";
+                iframe.style.width = "100%";
+                iframe.style.height = "100%";
+                iframe.style.border = "none";
+                iframe.style.transform = "translateZ(0)";
+                iframe.style.webkitTransform = "translateZ(0)";
+              }
+
               if (pendingPlayVideoIdRef.current) {
                 const vid = pendingPlayVideoIdRef.current;
                 pendingPlayVideoIdRef.current = null;
@@ -520,6 +539,19 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     useEffect(() => {
       if (!isExpanded) return;
       const player = playerRef.current;
+      const iframe = player?.getIframe?.() || document.getElementById("global-jockie-yt-player");
+      if (iframe) {
+        iframe.setAttribute(
+          "allow",
+          "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+        );
+        iframe.setAttribute("allowfullscreen", "true");
+        iframe.setAttribute("playsinline", "1");
+        iframe.setAttribute("webkit-playsinline", "1");
+        iframe.style.transform = "translateZ(0)";
+        iframe.style.webkitTransform = "translateZ(0)";
+      }
+
       if (!player || typeof player.playVideo !== "function") return;
 
       const timer = setTimeout(() => {
@@ -824,6 +856,25 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
       }
     }, []);
 
+    // Fullscreen toggle for optimal mobile hardware video playback
+    const handleToggleFullscreen = useCallback(() => {
+      const player = playerRef.current;
+      const iframe = player?.getIframe?.() || document.getElementById("global-jockie-yt-player");
+      if (!iframe) return;
+
+      try {
+        if (iframe.requestFullscreen) {
+          iframe.requestFullscreen();
+        } else if ((iframe as any).webkitRequestFullscreen) {
+          (iframe as any).webkitRequestFullscreen();
+        } else if ((iframe as any).webkitEnterFullscreen) {
+          (iframe as any).webkitEnterFullscreen();
+        }
+      } catch (e) {
+        console.warn("Fullscreen request error:", e);
+      }
+    }, []);
+
     const togglePlayPause = () => {
       if (roomState.isPlaying) {
         executeCommand("!pause");
@@ -956,26 +1007,43 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           Kept in place without repositioning to -9999px (which tears down mobile video HW decode pipelines).
         */}
         <div
-          className={`fixed inset-x-4 top-20 sm:top-24 sm:right-6 sm:left-auto sm:w-96 rounded-3xl bg-slate-950 p-3 shadow-2xl border border-pink-300/40 transition-opacity duration-200 ${
+          className={`fixed inset-x-4 top-20 sm:top-24 sm:right-6 sm:left-auto sm:w-96 rounded-3xl bg-slate-950 p-3 shadow-2xl border border-pink-300/40 transition-opacity duration-200 transform-gpu will-change-transform ${
             isExpanded
               ? "opacity-100 pointer-events-auto z-40"
               : "opacity-0 pointer-events-none -z-10"
           }`}
+          style={{
+            transform: "translateZ(0)",
+            WebkitTransform: "translateZ(0)",
+          }}
         >
           <div className="flex items-center justify-between pb-2 text-white text-xs px-1">
             <span className="font-bold flex items-center gap-1.5">
               <Youtube className="h-4 w-4 text-red-500" />
               Live Video Screen
+              {isBuffering && (
+                <span className="text-[10px] text-amber-300 font-normal">
+                  (Memuat...)
+                </span>
+              )}
             </span>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={handleForceResyncVideo}
                 className="px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-pink-300 hover:text-white flex items-center gap-1 text-[11px] cursor-pointer transition-colors"
-                title="Segarkan / Atasi Loading Video"
+                title="Segarkan Video"
               >
                 <RotateCw className="h-3 w-3" />
                 <span>Segarkan</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleToggleFullscreen}
+                className="p-1 hover:bg-white/20 rounded-full cursor-pointer text-slate-300 hover:text-white"
+                title="Layar Penuh (Fullscreen)"
+              >
+                <Maximize2 className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
@@ -988,20 +1056,21 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
             </div>
           </div>
 
-          <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-inner">
-            <div id="global-jockie-yt-player" className="h-full w-full" />
-
-            {/* Quick Unfreeze Floating Overlay if Buffering */}
-            {isBuffering && isExpanded && (
-              <button
-                type="button"
-                onClick={handleForceResyncVideo}
-                className="absolute inset-x-0 bottom-3 mx-auto w-fit px-3.5 py-1.5 rounded-full bg-pink-600/90 hover:bg-pink-500 text-white text-xs font-semibold shadow-xl backdrop-blur-md flex items-center gap-1.5 cursor-pointer z-50 animate-pulse border border-pink-300/40"
-              >
-                <RotateCw className="h-3.5 w-3.5" />
-                <span>Ketuk jika video macet / loading</span>
-              </button>
-            )}
+          <div
+            className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-md transform-gpu will-change-transform"
+            style={{
+              transform: "translateZ(0)",
+              WebkitTransform: "translateZ(0)",
+            }}
+          >
+            <div
+              id="global-jockie-yt-player"
+              className="absolute inset-0 w-full h-full"
+              style={{
+                transform: "translateZ(0)",
+                WebkitTransform: "translateZ(0)",
+              }}
+            />
           </div>
         </div>
 
