@@ -5,9 +5,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
   Camera,
+  ExternalLink,
   Mic,
   MicOff,
   Phone,
+  PhoneCall,
   PhoneIncoming,
   PhoneOff,
   Radio,
@@ -17,6 +19,7 @@ import {
   Video,
   VideoOff,
   Volume2,
+  VolumeX,
 } from "lucide-react";
 import { getSanrioCharacter } from "@/lib/sanrioCharacters";
 import { useAudio } from "@/context/AudioContext";
@@ -37,19 +40,12 @@ export interface WebRTCCallModalProps {
   onEndCall: () => void;
 }
 
-/**
- * WhatsApp-Style WebRTC ICE Configuration:
- * Pure STUN fails on mobile 4G/5G networks (Carrier-Grade / Symmetric NAT).
- * WhatsApp, Telegram & Discord solve this by using TURN relay servers (UDP & TLS/TCP on port 443).
- * Open Relay Project provides free public TURN relays that can penetrate strict cellular firewalls.
- */
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     // 1. Google Public STUN
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
 
     // 2. Open Relay Project (Metered) STUN & TURN Relay
     { urls: "stun:openrelay.metered.ca:80" },
@@ -95,15 +91,18 @@ export function WebRTCCallModal({
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
-  const [connectionLabel, setConnectionLabel] = useState("Menghubungkan...");
+  const [connectionLabel, setConnectionLabel] = useState("Menghubungkan sinyal...");
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [audioNeedsUnlock, setAudioNeedsUnlock] = useState(false);
+
+  // Streams in React state to guarantee binding to DOM video/audio elements immediately
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const remoteStreamRef = useRef<MediaStream | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const timerRef = useRef<number | null>(null);
 
@@ -113,6 +112,31 @@ export function WebRTCCallModal({
       : getSanrioCharacter(profile.userACharacter, "cinnamoroll");
   const partnerName =
     profile.role === "user_a" ? profile.userBName : profile.userAName;
+
+  // 1. DOM BINDING FOR LOCAL VIDEO PIP
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(() => {});
+    }
+  }, [localStream, callState]);
+
+  // 2. DOM BINDING FOR REMOTE AUDIO & VIDEO
+  useEffect(() => {
+    if (remoteStream) {
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current
+          .play()
+          .then(() => setAudioNeedsUnlock(false))
+          .catch(() => setAudioNeedsUnlock(true));
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(() => {});
+      }
+    }
+  }, [remoteStream, callState]);
 
   // Flush queued ICE candidates once remoteDescription is set
   const flushIceCandidates = async (pc: RTCPeerConnection) => {
@@ -150,21 +174,6 @@ export function WebRTCCallModal({
     }
   }, [activeOutgoingCall]);
 
-  // Synchronize remote stream to DOM audio/video elements when call connects
-  useEffect(() => {
-    if ((callState === "connected" || callState === "calling") && remoteStreamRef.current) {
-      const stream = remoteStreamRef.current;
-      if (remoteAudioRef.current && remoteAudioRef.current.srcObject !== stream) {
-        remoteAudioRef.current.srcObject = stream;
-        remoteAudioRef.current.play().catch(() => {});
-      }
-      if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== stream) {
-        remoteVideoRef.current.srcObject = stream;
-        remoteVideoRef.current.play().catch(() => {});
-      }
-    }
-  }, [callState, hasRemoteVideo]);
-
   // Unified Signal Processing Function
   const processSignal = async (signal: WebRTCSignalMessage) => {
     if (!signal) return;
@@ -201,20 +210,19 @@ export function WebRTCCallModal({
           console.warn("[WebRTC] Direct addIceCandidate error:", err);
         }
       } else {
-        // Buffer until setRemoteDescription completes
         pendingIceCandidatesRef.current.push(signal.candidate);
       }
     }
   };
 
-  // 1. Process via React prop signalQueue
+  // Process via React prop signalQueue
   useEffect(() => {
     if (signalQueue) {
       processSignal(signalQueue);
     }
   }, [signalQueue]);
 
-  // 2. Process via synchronous custom window event (Zero drops for rapid ICE candidates!)
+  // Process via synchronous custom window event
   useEffect(() => {
     const handleEventSignal = (e: CustomEvent<WebRTCSignalMessage>) => {
       if (e.detail) {
@@ -242,18 +250,19 @@ export function WebRTCCallModal({
       window.clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
+    if (localStream) {
+      localStream.getTracks().forEach((track) => track.stop());
+      setLocalStream(null);
     }
     if (pcRef.current) {
       pcRef.current.close();
       pcRef.current = null;
     }
-    remoteStreamRef.current = null;
+    setRemoteStream(null);
     pendingIceCandidatesRef.current = [];
     setHasRemoteVideo(false);
     setPermissionError(null);
+    setAudioNeedsUnlock(false);
     setConnectionLabel("Menghubungkan...");
   };
 
@@ -273,19 +282,7 @@ export function WebRTCCallModal({
     pc.ontrack = (event) => {
       const stream = event.streams[0];
       if (!stream) return;
-      remoteStreamRef.current = stream;
-
-      // 1. ALWAYS attach to dedicated audio player so voice is 100% audible in both Audio & Video calls
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = stream;
-        remoteAudioRef.current.play().catch((e) => console.log("[WebRTC] audio play catch:", e));
-      }
-
-      // 2. Attach to video element if video track is present
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = stream;
-        remoteVideoRef.current.play().catch((e) => console.log("[WebRTC] video play catch:", e));
-      }
+      setRemoteStream(stream);
 
       const videoTracks = stream.getVideoTracks();
       if (videoTracks.length > 0) {
@@ -304,7 +301,7 @@ export function WebRTCCallModal({
       } else if (state === "connecting") {
         setConnectionLabel("Menghubungkan jalur media via Relay...");
       } else if (state === "failed") {
-        setConnectionLabel("Koneksi gagal, silakan coba panggil ulang.");
+        setConnectionLabel("Koneksi P2P terhalang NAT operator. Beralih ke WhatsApp disarankan.");
       } else if (state === "disconnected") {
         setConnectionLabel("Jaringan tidak stabil...");
       }
@@ -316,7 +313,7 @@ export function WebRTCCallModal({
         setConnectionLabel("Tersambung");
         setCallState("connected");
       } else if (iceState === "checking") {
-        setConnectionLabel("Mencari rute jaringan terbaik (STUN/TURN)...");
+        setConnectionLabel("Menghubungkan jalur suara...");
       }
     };
 
@@ -340,23 +337,35 @@ export function WebRTCCallModal({
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      localStreamRef.current = stream;
+      setLocalStream(stream);
 
       const pc = setupPeerConnection(type);
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
-      if (localVideoRef.current && type === "video") {
-        localVideoRef.current.srcObject = stream;
-        localVideoRef.current.play().catch(() => {});
-      }
-
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+
+      // Complete SDP gathering: wait 700ms for candidates to embed inside offer SDP
+      await new Promise<void>((resolve) => {
+        if (pc.iceGatheringState === "complete") {
+          resolve();
+        } else {
+          const timeout = setTimeout(resolve, 700);
+          const onGather = () => {
+            if (pc.iceGatheringState === "complete") {
+              clearTimeout(timeout);
+              pc.removeEventListener("icegatheringstatechange", onGather);
+              resolve();
+            }
+          };
+          pc.addEventListener("icegatheringstatechange", onGather);
+        }
+      });
 
       onSendSignal({
         type: "call-offer",
         call_type: type,
-        sdp: offer,
+        sdp: pc.localDescription || offer,
       });
     } catch (err: any) {
       console.warn("[WebRTC] initiateOutgoingCall getUserMedia failed:", err);
@@ -390,15 +399,10 @@ export function WebRTCCallModal({
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      localStreamRef.current = stream;
+      setLocalStream(stream);
 
       const pc = setupPeerConnection(activeType);
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-      if (localVideoRef.current && activeType === "video") {
-        localVideoRef.current.srcObject = stream;
-        localVideoRef.current.play().catch(() => {});
-      }
 
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.sdp));
       await flushIceCandidates(pc);
@@ -406,10 +410,27 @@ export function WebRTCCallModal({
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
+      // Complete SDP gathering: wait 700ms for candidates to embed inside answer SDP
+      await new Promise<void>((resolve) => {
+        if (pc.iceGatheringState === "complete") {
+          resolve();
+        } else {
+          const timeout = setTimeout(resolve, 700);
+          const onGather = () => {
+            if (pc.iceGatheringState === "complete") {
+              clearTimeout(timeout);
+              pc.removeEventListener("icegatheringstatechange", onGather);
+              resolve();
+            }
+          };
+          pc.addEventListener("icegatheringstatechange", onGather);
+        }
+      });
+
       onSendSignal({
         type: "call-answer",
         call_type: activeType,
-        sdp: answer,
+        sdp: pc.localDescription || answer,
       });
 
       setCallState("connected");
@@ -450,10 +471,19 @@ export function WebRTCCallModal({
     onEndCall();
   };
 
+  const handleManualAudioUnlock = () => {
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current
+        .play()
+        .then(() => setAudioNeedsUnlock(false))
+        .catch(() => {});
+    }
+  };
+
   const toggleMute = () => {
     playPop();
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
+    if (localStream) {
+      const audioTrack = localStream.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
         setIsMuted(!audioTrack.enabled);
@@ -463,8 +493,8 @@ export function WebRTCCallModal({
 
   const toggleVideo = () => {
     playPop();
-    if (localStreamRef.current) {
-      const videoTrack = localStreamRef.current.getVideoTracks()[0];
+    if (localStream) {
+      const videoTrack = localStream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setIsVideoEnabled(videoTrack.enabled);
@@ -482,11 +512,7 @@ export function WebRTCCallModal({
 
   return (
     <>
-      {/* 
-        PERMANENT UNCONDITIONAL AUDIO ELEMENT:
-        Rendered permanently in DOM so remoteAudioRef.current is NEVER null!
-        Guarantees 2-way remote voice is heard at 100% volume in both Audio & Video calls.
-      */}
+      {/* Permanent Audio Element for Remote Voice */}
       <audio ref={remoteAudioRef} autoPlay playsInline />
 
       <AnimatePresence>
@@ -514,15 +540,6 @@ export function WebRTCCallModal({
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
                     {permissionError}
                   </p>
-                </div>
-
-                <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800 p-3 text-[11px] text-amber-800 dark:text-amber-300 text-left">
-                  <strong>Cara mengizinkan di Laptop & HP:</strong>
-                  <ol className="list-decimal list-inside mt-1 space-y-0.5">
-                    <li>Klik ikon <strong>Gembok 🔒</strong> di samping kiri URL.</li>
-                    <li>Ubah Mikrofon & Kamera ke <strong>"Izinkan" (Allow)</strong>.</li>
-                    <li>Segarkan halaman atau coba lagi.</li>
-                  </ol>
                 </div>
 
                 <div className="flex items-center gap-3 pt-1">
@@ -585,7 +602,6 @@ export function WebRTCCallModal({
                 </div>
 
                 <div className="flex items-center justify-center gap-6 pt-2">
-                  {/* Reject */}
                   <button
                     type="button"
                     onClick={handleRejectIncoming}
@@ -597,7 +613,6 @@ export function WebRTCCallModal({
                     <span>Tolak</span>
                   </button>
 
-                  {/* Accept */}
                   <button
                     type="button"
                     onClick={handleAcceptIncoming}
@@ -620,7 +635,7 @@ export function WebRTCCallModal({
                   className="relative flex h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-[32px] border border-pink-200/50 dark:border-purple-800 bg-slate-900 shadow-2xl text-white"
                 >
                   {/* Top Bar with Status & Timer */}
-                  <div className="relative z-20 flex items-center justify-between bg-gradient-to-b from-black/70 to-transparent p-5">
+                  <div className="relative z-20 flex items-center justify-between bg-gradient-to-b from-black/75 to-transparent p-5">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 backdrop-blur-md border border-white/20">
                         <img
@@ -632,29 +647,54 @@ export function WebRTCCallModal({
                       <div>
                         <h4 className="text-sm font-bold leading-tight flex items-center gap-1.5">
                           <span>{partnerName}</span>
-                          {callState === "connected" && (
-                            <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                          )}
+                          <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                         </h4>
                         <p className="text-[11px] text-pink-200/80">
                           {callState === "calling"
                             ? connectionLabel
-                            : `Tersambung • ${formatDuration(callDuration)}`}
+                            : `Durasi: ${formatDuration(callDuration)}`}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 rounded-full bg-white/15 backdrop-blur-md px-3 py-1 text-xs font-semibold">
-                      <Radio className="h-3 w-3 text-emerald-400 animate-pulse" />
-                      <span>{callType === "video" ? "Video Call" : "Audio Call"}</span>
+                    <div className="flex items-center gap-2">
+                      {/* Direct WhatsApp Call Quick Launch */}
+                      <a
+                        href="https://api.whatsapp.com/send?text=Ayo%20teleponan%20sekarang%20sayang%20%F0%9F%92%96"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 text-[11px] font-bold shadow-xs transition-colors"
+                        title="Buka Panggilan di WhatsApp (bisa jalan di latar belakang/layar mati)"
+                      >
+                        <PhoneCall className="h-3 w-3" />
+                        <span>WhatsApp</span>
+                      </a>
+
+                      <div className="flex items-center gap-1 rounded-full bg-white/15 backdrop-blur-md px-2.5 py-1 text-[11px] font-semibold">
+                        <span>{callType === "video" ? "Video" : "Suara"}</span>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Audio Unlock Banner if Android Chrome blocked unprompted autoplay */}
+                  {audioNeedsUnlock && (
+                    <div className="relative z-30 mx-4 my-1">
+                      <button
+                        type="button"
+                        onClick={handleManualAudioUnlock}
+                        className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-rose-500 text-white text-xs font-bold py-2 px-3 shadow-lg animate-bounce cursor-pointer"
+                      >
+                        <Volume2 className="h-4 w-4" />
+                        <span>Ketuk di sini untuk Mengaktifkan Suara Pasangan 🔊</span>
+                      </button>
+                    </div>
+                  )}
 
                   {/* Video Streams / Audio Avatars */}
                   <div className="relative flex-1 overflow-hidden bg-slate-950 flex items-center justify-center">
                     {callType === "video" ? (
                       <>
-                        {/* Remote Video (Full Screen) */}
+                        {/* Remote Video Stream */}
                         <video
                           ref={remoteVideoRef}
                           autoPlay
@@ -662,7 +702,7 @@ export function WebRTCCallModal({
                           className="h-full w-full object-cover"
                         />
 
-                        {/* Remote fallback avatar ONLY if video stream is not yet active */}
+                        {/* Remote fallback avatar if remote video track is not active yet */}
                         {!hasRemoteVideo && (
                           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-900/90 pointer-events-none">
                             <img
@@ -676,7 +716,7 @@ export function WebRTCCallModal({
                           </div>
                         )}
 
-                        {/* Local Pip Video */}
+                        {/* Local Camera Pip Video (Self Preview) */}
                         <div className="absolute top-4 right-4 z-20 h-36 w-24 overflow-hidden rounded-2xl border-2 border-white/60 bg-black shadow-lg">
                           <video
                             ref={localVideoRef}
@@ -688,7 +728,7 @@ export function WebRTCCallModal({
                         </div>
                       </>
                     ) : (
-                      /* Audio Call Screen with Animated Harmonic Waves */
+                      /* Audio Call Screen with Harmonic Animation */
                       <div className="flex flex-col items-center justify-center gap-6 p-6 text-center">
                         <div className="relative flex h-36 w-36 items-center justify-center">
                           <motion.span
@@ -714,9 +754,7 @@ export function WebRTCCallModal({
                         <div>
                           <h3 className="text-xl font-bold">{partnerName}</h3>
                           <p className="mt-1 text-xs text-pink-200">
-                            {callState === "calling"
-                              ? connectionLabel
-                              : `Suara Jernih 2-Arah • ${formatDuration(callDuration)}`}
+                            {connectionLabel}
                           </p>
                         </div>
                       </div>
