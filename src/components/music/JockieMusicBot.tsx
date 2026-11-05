@@ -114,13 +114,11 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     const playerRef = useRef<any>(null);
     const isPlayerInitializedRef = useRef(false);
     const pendingPlayVideoIdRef = useRef<string | null>(null);
-    const bufferingWatchdogRef = useRef<NodeJS.Timeout | null>(null);
     const channelRef = useRef<any>(null);
     const localBroadcastRef = useRef<BroadcastChannel | null>(null);
 
     // Keep fresh reference of roomState for asynchronous callbacks (e.g. onStateChange ENDED)
     const roomStateRef = useRef(roomState);
-    const lastSeekTimeRef = useRef(0);
     useEffect(() => {
       roomStateRef.current = roomState;
     }, [roomState]);
@@ -314,17 +312,26 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
         }
 
         try {
-          if (player.getVideoData && player.getVideoData()?.video_id !== remote.videoId) {
+          const currentVidData = player.getVideoData ? player.getVideoData() : null;
+          const isSameVideo = currentVidData?.video_id && currentVidData.video_id === remote.videoId;
+          const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
+          const isCurrentlyPlaying = playerState === 1;
+
+          if (!isSameVideo) {
             player.loadVideoById({
               videoId: remote.videoId,
-              startSeconds: remote.pausedAtSeconds,
+              startSeconds: remote.pausedAtSeconds || 0,
             });
           }
 
           if (remote.isPlaying) {
-            const targetTime =
-              remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000;
-            player.seekTo?.(targetTime, true);
+            // Only seek if NOT already playing the same video smoothly!
+            // Prevents cross-device state updates (like chat or queue changes) from wiping mobile video buffer
+            if (!isCurrentlyPlaying || !isSameVideo) {
+              const targetTime =
+                remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000;
+              player.seekTo?.(Math.max(0, targetTime), true);
+            }
             const playPromise = player.playVideo?.();
             if (playPromise && typeof playPromise.catch === "function") {
               playPromise.catch(() => setNeedsUnlock(true));
@@ -442,11 +449,6 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               }
             },
             onStateChange: (event: any) => {
-              if (bufferingWatchdogRef.current) {
-                clearTimeout(bufferingWatchdogRef.current);
-                bufferingWatchdogRef.current = null;
-              }
-
               if (event.data === 1) {
                 // PLAYING
                 setIsBuffering(false);
@@ -458,22 +460,9 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
                 setIsBuffering(false);
                 setPlayerStatusText("Jeda ⏸️");
               } else if (event.data === 3) {
-                // BUFFERING
+                // BUFFERING (Normal network loading)
                 setIsBuffering(true);
                 setPlayerStatusText("Memuat Video... ⏳");
-                // Watchdog: If stuck buffering for > 2.5s on mobile, break the MSE deadlock
-                bufferingWatchdogRef.current = setTimeout(() => {
-                  const p = playerRef.current;
-                  if (p && typeof p.getPlayerState === "function" && p.getPlayerState() === 3) {
-                    const freshRoom = roomStateRef.current;
-                    const targetTime = freshRoom.isPlaying
-                      ? freshRoom.pausedAtSeconds + (Date.now() - freshRoom.startedAtServerTime) / 1000
-                      : (p.getCurrentTime?.() || 0);
-                    console.warn("[JockieYT] Buffering watchdog recovering at", targetTime);
-                    p.seekTo?.(targetTime, true);
-                    p.playVideo?.();
-                  }
-                }, 2500);
               } else if (event.data === 0) {
                 // ENDED: Auto-advance queue or reset cleanly
                 setIsBuffering(false);
@@ -508,7 +497,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     }, [isApiReady, roomState.isPlaying, roomState.videoId, roomState.pausedAtSeconds, roomState.startedAtServerTime, handleTrackEnded]);
 
     // ------------------------------------------------------------------------
-    // 6. EXACT TIMESTAMP DRIFT CORRECTION (THE DISCORD BOT FORMULA)
+    // 6. CONTINUOUS PLAYBACK POSITION TRACKING (NO AUTO-SEEK LOOP!)
     // ------------------------------------------------------------------------
     useEffect(() => {
       if (!roomState.isPlaying) return;
@@ -520,54 +509,32 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
         const currentPos = player.getCurrentTime();
         setCurrentTime(currentPos);
         setDuration(player.getDuration() || duration);
-
-        const targetTime =
-          roomState.pausedAtSeconds +
-          (Date.now() - roomState.startedAtServerTime) / 1000;
-
-        const drift = Math.abs(currentPos - targetTime);
-        const now = Date.now();
-
-        // If drift exceeds 4s and cooldown passed (6s):
-        // Resync to correct timestamp to break any frozen buffers and keep both screens synchronized
-        if (drift > 4 && now - lastSeekTimeRef.current > 6000) {
-          lastSeekTimeRef.current = now;
-          player.seekTo(targetTime, true);
-          player.playVideo();
-          setPlayerStatusText(`Sinkronisasi Jockie Bot (drift: ${drift.toFixed(1)}s)`);
-        }
-      }, 2500);
+      }, 1000);
 
       return () => window.clearInterval(interval);
-    }, [roomState.isPlaying, roomState.startedAtServerTime, roomState.pausedAtSeconds, duration]);
+    }, [roomState.isPlaying, duration]);
 
     // ------------------------------------------------------------------------
-    // AUTO-UNFREEZE VIDEO SURFACE WHEN EXPANDING ON MOBILE
+    // ENSURE VIDEO PLAYS ON EXPAND WITHOUT CORRUPTING BUFFER
     // ------------------------------------------------------------------------
     useEffect(() => {
       if (!isExpanded) return;
       const player = playerRef.current;
-      if (!player || typeof player.getPlayerState !== "function") return;
+      if (!player || typeof player.playVideo !== "function") return;
 
-      const unfreezeTimer = setTimeout(() => {
+      const timer = setTimeout(() => {
         try {
-          const freshRoom = roomStateRef.current;
-          const targetTime = freshRoom.isPlaying
-            ? freshRoom.pausedAtSeconds + (Date.now() - freshRoom.startedAtServerTime) / 1000
-            : (player.getCurrentTime?.() || 0);
-
-          player.seekTo?.(targetTime, true);
-          if (freshRoom.isPlaying) {
+          if (roomState.isPlaying) {
             player.unMute?.();
             player.playVideo?.();
           }
         } catch (err) {
-          console.warn("[JockieYT] Error during expand unfreeze:", err);
+          console.warn("[JockieYT] Error during expand:", err);
         }
-      }, 250);
+      }, 150);
 
-      return () => clearTimeout(unfreezeTimer);
-    }, [isExpanded]);
+      return () => clearTimeout(timer);
+    }, [isExpanded, roomState.isPlaying]);
 
     // ------------------------------------------------------------------------
     // 7. COMMAND HANDLER IMPLEMENTATION (!play, !stop, !pause, !resume, !sync, !skip)
@@ -842,21 +809,16 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
       }
     };
 
-    // Force resync and unfreeze video stream
+    // Force resume video stream without wiping the buffer
     const handleForceResyncVideo = useCallback(() => {
       const player = playerRef.current;
       if (!player) return;
-      const freshRoom = roomStateRef.current;
-      const targetTime = freshRoom.isPlaying
-        ? freshRoom.pausedAtSeconds + (Date.now() - freshRoom.startedAtServerTime) / 1000
-        : (player.getCurrentTime?.() || 0);
 
       try {
         setIsBuffering(false);
         player.unMute?.();
-        player.seekTo?.(targetTime, true);
         player.playVideo?.();
-        setPlayerStatusText(`Video disegarkan (${targetTime.toFixed(1)}s) 🎬`);
+        setPlayerStatusText("Video dilanjutkan 🎬");
       } catch (e) {
         console.warn("Force resync error", e);
       }
