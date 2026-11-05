@@ -117,6 +117,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
 
     // Keep fresh reference of roomState for asynchronous callbacks (e.g. onStateChange ENDED)
     const roomStateRef = useRef(roomState);
+    const lastSeekTimeRef = useRef(0);
     useEffect(() => {
       roomStateRef.current = roomState;
     }, [roomState]);
@@ -496,8 +497,17 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           (Date.now() - roomState.startedAtServerTime) / 1000;
 
         const drift = Math.abs(currentPos - targetTime);
+        const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
+        // YT.PlayerState: -1 (unstarted), 0 (ended), 1 (playing), 2 (paused), 3 (buffering), 5 (cued)
+        const isBuffering = playerState === 3;
+        const now = Date.now();
 
-        if (drift > 2) {
+        // Anti-buffering loop on mobile devices:
+        // 1. Drift threshold relaxed to 5s (mobile video decoding initialization causes short 1-2s frame lags).
+        // 2. Never trigger seekTo if player is actively buffering.
+        // 3. Enforce an 8-second cooldown between auto-seeks to allow stream buffering to complete smoothly.
+        if (drift > 5 && !isBuffering && now - lastSeekTimeRef.current > 8000) {
+          lastSeekTimeRef.current = now;
           player.seekTo(targetTime, true);
           player.playVideo();
           setPlayerStatusText(`Sinkronisasi Jockie Bot (drift: ${drift.toFixed(1)}s)`);
@@ -909,29 +919,28 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
         {/* 
           1. PERSISTENT YOUTUBE IFRAME CONTAINER 
           Rendered permanently in DOM so playback NEVER stops across tab changes.
+          Kept in place without repositioning to -9999px (which tears down mobile video HW decode pipelines).
         */}
         <div
-          className={`transition-all duration-300 z-40 ${
+          className={`fixed inset-x-4 top-20 sm:top-24 sm:right-6 sm:left-auto sm:w-96 rounded-3xl bg-slate-950 p-3 shadow-2xl border border-pink-300/40 transition-opacity duration-200 ${
             isExpanded
-              ? "fixed inset-x-4 top-20 sm:top-24 sm:right-6 sm:left-auto sm:w-96 rounded-3xl bg-slate-950 p-3 shadow-2xl border border-pink-300/40"
-              : "fixed -left-[9999px] top-0 w-80 h-48 opacity-10 pointer-events-none overflow-hidden"
+              ? "opacity-100 pointer-events-auto z-40"
+              : "opacity-0 pointer-events-none -z-10"
           }`}
         >
-          {isExpanded && (
-            <div className="flex items-center justify-between pb-2 text-white text-xs px-1">
-              <span className="font-bold flex items-center gap-1.5">
-                <Youtube className="h-4 w-4 text-red-500" />
-                Live Video Screen
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsExpanded(false)}
-                className="p-1 hover:bg-white/20 rounded-full cursor-pointer"
-              >
-                <Minimize2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
+          <div className="flex items-center justify-between pb-2 text-white text-xs px-1">
+            <span className="font-bold flex items-center gap-1.5">
+              <Youtube className="h-4 w-4 text-red-500" />
+              Live Video Screen
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsExpanded(false)}
+              className="p-1 hover:bg-white/20 rounded-full cursor-pointer"
+            >
+              <Minimize2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
 
           <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-inner">
             <div id="global-jockie-yt-player" className="h-full w-full" />
