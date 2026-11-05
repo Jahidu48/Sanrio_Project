@@ -325,50 +325,29 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
         }
 
         try {
-          const currentVideoId = player.getVideoData?.()?.video_id;
-          const isNewVideo = currentVideoId !== remote.videoId;
+          const currentVideoData = player.getVideoData ? player.getVideoData() : null;
+          const currentVid = currentVideoData?.video_id;
 
-          if (isNewVideo) {
-            player.loadVideoById({
-              videoId: remote.videoId,
-              startSeconds: remote.pausedAtSeconds || 0,
-            });
-            if (remote.isPlaying) {
-              const playPromise = player.playVideo?.();
-              if (playPromise && typeof playPromise.catch === "function") {
-                playPromise.catch(() => setNeedsUnlock(true));
-              }
-            } else {
-              player.pauseVideo?.();
-            }
-            return;
+          if (currentVid && currentVid !== remote.videoId) {
+            player.loadVideoById(remote.videoId, remote.pausedAtSeconds || 0);
           }
 
-          // Same video: check state to avoid interrupting buffering on mobile
-          const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
-          const currentPos = typeof player.getCurrentTime === "function" ? player.getCurrentTime() : 0;
-          const targetTime =
-            remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000;
-          const drift = Math.abs(currentPos - targetTime);
-
           if (remote.isPlaying) {
-            if (playerState !== 1 /* PLAYING */ && playerState !== 3 /* BUFFERING */) {
-              if (drift > 6) {
-                player.seekTo?.(targetTime, true);
-              }
-              const playPromise = player.playVideo?.();
-              if (playPromise && typeof playPromise.catch === "function") {
-                playPromise.catch(() => setNeedsUnlock(true));
-              }
-            } else if (drift > 18 && playerState !== 3) {
-              // Only seek if drift is severe and not currently buffering
+            const targetTime =
+              remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000;
+            const currentPos = player.getCurrentTime ? player.getCurrentTime() : 0;
+            const drift = Math.abs(currentPos - targetTime);
+
+            if (drift > 2.5) {
               player.seekTo?.(targetTime, true);
+            }
+            const playPromise = player.playVideo?.();
+            if (playPromise && typeof playPromise.catch === "function") {
+              playPromise.catch(() => setNeedsUnlock(true));
             }
           } else {
             player.pauseVideo?.();
-            if (remote.pausedAtSeconds >= 0 && Math.abs(currentPos - remote.pausedAtSeconds) > 4) {
-              player.seekTo?.(remote.pausedAtSeconds, true);
-            }
+            player.seekTo?.(remote.pausedAtSeconds, true);
           }
         } catch {
           setNeedsUnlock(true);
@@ -551,14 +530,14 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
         const drift = Math.abs(currentPos - targetTime);
         const now = Date.now();
 
-        // 18s drift threshold and 15s cooldown to avoid infinite seek loop from device clock skew
-        if (drift > 18 && now - lastSeekTimeRef.current > 15000) {
+        // 3s drift threshold with buffering guard and 3.5s cooldown for tight, seamless sync
+        if (drift > 3 && now - lastSeekTimeRef.current > 3500) {
           lastSeekTimeRef.current = now;
           player.seekTo(targetTime, true);
           player.playVideo();
           setPlayerStatusText(`Sinkronisasi Jockie Bot (drift: ${drift.toFixed(1)}s)`);
         }
-      }, 3000);
+      }, 2500);
 
       return () => window.clearInterval(interval);
     }, [roomState.isPlaying, roomState.startedAtServerTime, roomState.pausedAtSeconds]);

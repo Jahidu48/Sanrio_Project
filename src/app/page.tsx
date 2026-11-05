@@ -24,6 +24,7 @@ import { PlaygroundTab } from "@/components/play/PlaygroundTab";
 import { SharedMusicPlayerModal } from "@/components/music/SharedMusicPlayerModal";
 import { JockieMusicBot } from "@/components/music/JockieMusicBot";
 import { PartnerListeningBanner } from "@/components/music/PartnerListeningBanner";
+import { SanrioNotificationToast } from "@/components/navigation/SanrioNotificationToast";
 import { SharedMusicProvider } from "@/context/SharedMusicContext";
 import type { MiniDoodleCanvasHandle } from "@/components/play/DoodleGuessGame";
 import { SharedJournalTab } from "@/components/journal/SharedJournalTab";
@@ -390,6 +391,9 @@ export default function CoupleSpaceDashboard() {
       onBroadcastMusicSync={broadcastMusicSync}
     >
       <div className="min-h-dvh w-full max-w-full sanrio-shell-backdrop lg:p-4 xl:p-6 transition-colors">
+        {/* Floating Sanrio Notification Toast & Permission Banner */}
+        <SanrioNotificationToast />
+
         {/* Floating Partner Listening Sync Toast Banner */}
         <PartnerListeningBanner />
 

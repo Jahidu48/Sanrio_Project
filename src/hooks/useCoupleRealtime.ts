@@ -33,7 +33,7 @@ import type {
   WebRTCSignalMessage,
 } from "@/lib/types";
 import type { SanrioCharacterId } from "@/lib/sanrioCharacters";
-import { notifyPartnerWaiting } from "@/lib/notifications";
+import { notifyPartnerWaiting, notifyPartnerOnline } from "@/lib/notifications";
 
 interface UseCoupleRealtimeOptions {
   profile: CoupleProfile;
@@ -711,6 +711,15 @@ export function useCoupleRealtime({
             });
           });
           setOnlineRoles(activeRoles);
+        })
+        .on("presence", { event: "join" }, ({ newPresences }) => {
+          (newPresences as any[]).forEach((p) => {
+            if (p.role && p.role !== profile.role) {
+              const partnerName =
+                p.name || (p.role === "user_a" ? profile.userAName : profile.userBName);
+              notifyPartnerOnline(partnerName);
+            }
+          });
         })
         .subscribe(async (status) => {
           if (status === "SUBSCRIBED") {

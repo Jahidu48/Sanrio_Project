@@ -47,18 +47,42 @@ export type CustomNotificationOptions = NotificationOptions & {
 
 /**
  * Core function to dispatch a device notification.
- * Uses ServiceWorkerRegistration.showNotification (recommended for PWA/Android mobile)
- * with a fallback to native new Notification().
+ * Dispatches both an in-app visual toast AND a native OS/PWA push notification.
+ * Uses ServiceWorkerRegistration.showNotification with a fallback to native new Notification().
  */
 export async function sendDeviceNotification(
   title: string,
   options?: CustomNotificationOptions
 ): Promise<boolean> {
-  if (!isNotificationSupported()) return false;
-  if (Notification.permission !== "granted") return false;
+  const defaultIcon = "/characters/cinnamoroll.svg";
+  const defaultBadge = "/characters/cinnamoroll.svg";
 
-  const defaultIcon = "/icons/icon-192.svg";
-  const defaultBadge = "/icons/icon-192.svg";
+  // 1. ALWAYS dispatch in-app visible toast first so the user sees it immediately on screen!
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("sanrio-in-app-toast", {
+        detail: {
+          title,
+          body: options?.body || "",
+          icon: options?.icon || defaultIcon,
+          url: options?.url || "/",
+          timestamp: Date.now(),
+        },
+      })
+    );
+  }
+
+  // 2. Trigger device haptic vibration if available (Android Chrome)
+  if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+    try {
+      navigator.vibrate([150, 70, 150]);
+    } catch {}
+  }
+
+  // 3. Check if OS notifications are supported and granted
+  if (!isNotificationSupported() || Notification.permission !== "granted") {
+    return false;
+  }
 
   const payload: CustomNotificationOptions = {
     icon: defaultIcon,
@@ -71,17 +95,14 @@ export async function sendDeviceNotification(
     },
   };
 
-  // Trigger device haptic vibration if available
-  if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-    try {
-      navigator.vibrate([150, 70, 150]);
-    } catch {}
-  }
-
-  // 1. Try via Service Worker Registration (Standard for PWA / Mobile Android)
+  // 4. Try via Service Worker Registration with an 800ms race timeout to avoid hanging
   if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
     try {
-      const reg = await navigator.serviceWorker.ready;
+      const regPromise = navigator.serviceWorker.ready;
+      const timeoutPromise = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), 800)
+      );
+      const reg = await Promise.race([regPromise, timeoutPromise]);
       if (reg && "showNotification" in reg) {
         await reg.showNotification(title, payload);
         return true;
@@ -91,7 +112,7 @@ export async function sendDeviceNotification(
     }
   }
 
-  // 2. Direct Window Notification Fallback (Desktop / Safari)
+  // 5. Direct Window Notification Fallback (Desktop / Safari / Non-SW)
   try {
     const n = new Notification(title, payload as NotificationOptions);
     n.onclick = () => {
