@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
@@ -6,6 +6,8 @@ import { TopCoupleBar } from "@/components/navigation/TopCoupleBar";
 import { BottomTabBar } from "@/components/navigation/BottomTabBar";
 import { DesktopSidebar } from "@/components/navigation/DesktopSidebar";
 import { SanrioCharacterPickerModal } from "@/components/navigation/SanrioCharacterPickerModal";
+import { PartnerPairingModal } from "@/components/navigation/PartnerPairingModal";
+import { FirstTimeRoleModal } from "@/components/navigation/FirstTimeRoleModal";
 import { HeartbeatOrb, type RippleWave } from "@/components/home/HeartbeatOrb";
 import { SecretEnvelopePrompt } from "@/components/home/SecretEnvelopePrompt";
 import { SanrioHeroBanner } from "@/components/home/SanrioHeroBanner";
@@ -44,6 +46,7 @@ import type {
 
 const PROFILE_META_KEY = "cinnamelo_couple_meta_v1";
 const SESSION_ROLE_KEY = "cinnamelo_tab_role_v1";
+const DEVICE_ROLE_KEY = "cinnamelo_device_role_v1";
 
 /** Only accept character IDs that actually exist in the 19-character registry. */
 function toValidCharacter(
@@ -60,6 +63,8 @@ export default function CoupleSpaceDashboard() {
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [openCharacterModal, setOpenCharacterModal] = useState(false);
   const [openMusicModal, setOpenMusicModal] = useState(false);
+  const [openPairingModal, setOpenPairingModal] = useState(false);
+  const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
   const [activeOutgoingCall, setActiveOutgoingCall] = useState<{
     type: WebRTCCallType;
   } | null>(null);
@@ -83,11 +88,14 @@ export default function CoupleSpaceDashboard() {
   const canvasRefHandle = useRef<CoopCanvasHandle | null>(null);
   const miniDoodleRefHandle = useRef<MiniDoodleCanvasHandle | null>(null);
 
-  // Restore saved couple nicknames, Sanrio avatars & per-tab partner role
+  // Restore saved couple nicknames, Sanrio avatars & per-device partner role
   useEffect(() => {
     try {
       const savedMeta = window.localStorage.getItem(PROFILE_META_KEY);
-      const savedRole = window.sessionStorage.getItem(
+      const savedDeviceRole = window.localStorage.getItem(
+        DEVICE_ROLE_KEY
+      ) as PartnerRole | null;
+      const savedSessionRole = window.sessionStorage.getItem(
         SESSION_ROLE_KEY
       ) as PartnerRole | null;
 
@@ -102,13 +110,25 @@ export default function CoupleSpaceDashboard() {
 
       const queryRole = params.get("role") as PartnerRole | null;
 
+      // If user joined via invite link/QR (?role=user_b), store permanently as device role
+      if (queryRole === "user_a" || queryRole === "user_b") {
+        window.localStorage.setItem(DEVICE_ROLE_KEY, queryRole);
+      }
+
+      // If opening on a new device without any stored role or role param, show first-time chooser
+      if (!savedDeviceRole && !queryRole) {
+        setShowFirstTimeModal(true);
+      }
+
       setProfile((prev) => {
         const parsed = savedMeta ? JSON.parse(savedMeta) : {};
         const nextRole: PartnerRole =
           queryRole === "user_a" || queryRole === "user_b"
             ? queryRole
-            : savedRole === "user_a" || savedRole === "user_b"
-            ? savedRole
+            : savedDeviceRole === "user_a" || savedDeviceRole === "user_b"
+            ? savedDeviceRole
+            : savedSessionRole === "user_a" || savedSessionRole === "user_b"
+            ? savedSessionRole
             : prev.role;
 
         return {
@@ -134,6 +154,7 @@ export default function CoupleSpaceDashboard() {
   const handleUpdateProfile = (next: CoupleProfile) => {
     setProfile(next);
     try {
+      window.localStorage.setItem(DEVICE_ROLE_KEY, next.role);
       window.sessionStorage.setItem(SESSION_ROLE_KEY, next.role);
       window.localStorage.setItem(
         PROFILE_META_KEY,
@@ -146,8 +167,13 @@ export default function CoupleSpaceDashboard() {
         })
       );
     } catch {
-      // ignore
+      // ignore storage errors
     }
+  };
+
+  const handleSelectFirstTimeRole = (role: PartnerRole) => {
+    setShowFirstTimeModal(false);
+    handleUpdateProfile({ ...profile, role });
   };
 
   // Triggered on BOTH User A and User B's screens when Cinnamoroll is tapped!
@@ -339,6 +365,7 @@ export default function CoupleSpaceDashboard() {
             onUpdateProfile={handleUpdateProfile}
             onOpenCharacterModal={() => setOpenCharacterModal(true)}
             onOpenSharedMusicModal={() => setOpenMusicModal(true)}
+            onOpenPairingModal={() => setOpenPairingModal(true)}
           />
 
           <main className="w-full flex-1 px-3 sm:px-6 lg:px-8 pt-4 sm:pt-5 pb-32 lg:pb-12">
@@ -510,6 +537,22 @@ export default function CoupleSpaceDashboard() {
         onChangeTab={setActiveTab}
         hasUnreadPrompt={myAnswerMissing}
         unreadChatCount={unreadChatCount}
+      />
+
+      {/* 2-Device QR Pairing Modal */}
+      <PartnerPairingModal
+        open={openPairingModal}
+        onClose={() => setOpenPairingModal(false)}
+        profile={profile}
+        bothPartnersOnline={bothPartnersOnline}
+        onSwitchRole={handleSwitchRole}
+      />
+
+      {/* First Time Device Role Onboarding Modal */}
+      <FirstTimeRoleModal
+        open={showFirstTimeModal}
+        profile={profile}
+        onSelectRole={handleSelectFirstTimeRole}
       />
 
       {/* 19 Sanrio Character & Couple Profile Picker Modal */}

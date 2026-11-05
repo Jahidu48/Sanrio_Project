@@ -12,9 +12,11 @@ import {
   Music,
   Pause,
   Play,
+  QrCode,
   Radio,
   RotateCcw,
   Settings2,
+  Smartphone,
   Sun,
   Upload,
   Volume2,
@@ -42,6 +44,7 @@ export interface TopCoupleBarProps {
   onUpdateProfile: (next: CoupleProfile) => void;
   onOpenCharacterModal: () => void;
   onOpenSharedMusicModal?: () => void;
+  onOpenPairingModal?: () => void;
 }
 
 export function TopCoupleBar({
@@ -53,6 +56,7 @@ export function TopCoupleBar({
   onUpdateProfile,
   onOpenCharacterModal,
   onOpenSharedMusicModal,
+  onOpenPairingModal,
 }: TopCoupleBarProps) {
   const { isDark, toggleTheme } = useTheme();
   const {
@@ -324,6 +328,34 @@ export function TopCoupleBar({
               <span className="max-w-[62px] truncate">{profile.userBName}</span>
             </button>
           </div>
+
+          {/* 2-Device Pairing & Sync Button */}
+          <button
+            type="button"
+            onClick={() => {
+              playPop();
+              onOpenPairingModal?.();
+            }}
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold transition-all shadow-xs cursor-pointer ${
+              bothPartnersOnline
+                ? "bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300"
+                : "bg-pink-100/90 dark:bg-pink-950/60 border border-pink-300 dark:border-pink-800 text-pink-700 dark:text-pink-300 animate-pulse"
+            }`}
+            title={
+              bothPartnersOnline
+                ? "Berdua Terhubung (2 Perangkat Sinkron)"
+                : "Hubungkan HP Pasangan (Scan QR Code)"
+            }
+          >
+            {bothPartnersOnline ? (
+              <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            ) : (
+              <QrCode className="h-3.5 w-3.5" />
+            )}
+            <span className="hidden sm:inline">
+              {bothPartnersOnline ? "Berdua Online 🟢" : "Hubungkan HP 📱"}
+            </span>
+          </button>
 
           {/* Real-time Battery Status Indicator */}
           {batteryInfo && (

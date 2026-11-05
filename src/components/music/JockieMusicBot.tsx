@@ -252,6 +252,20 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           payload: nextState,
         });
 
+        // 3. Network SSE Hub Broadcast (cross-device sync across phone & PC)
+        if (typeof window !== "undefined") {
+          fetch("/api/realtime-sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              roomId: profile.roomId,
+              event: "jockie-sync",
+              payload: nextState,
+              senderRole: profile.role,
+            }),
+          }).catch(() => {});
+        }
+
         const supabase = getSupabaseBrowserClient();
         if (supabase) {
           Promise.resolve(
@@ -726,6 +740,26 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
       };
     }, [executeCommand]);
 
+    // Listen to network SSE sync events dispatched from partner device
+    useEffect(() => {
+      const handleRemoteJockieSync = (e: CustomEvent<MusicRoomState>) => {
+        if (e.detail) {
+          handleRemoteStateUpdate(e.detail);
+        }
+      };
+
+      window.addEventListener(
+        "remote-jockie-sync" as any,
+        handleRemoteJockieSync as EventListener
+      );
+      return () => {
+        window.removeEventListener(
+          "remote-jockie-sync" as any,
+          handleRemoteJockieSync as EventListener
+        );
+      };
+    }, [handleRemoteStateUpdate]);
+
     // Autoplay unlock handler
     const handleUnlockAudio = () => {
       setNeedsUnlock(false);
@@ -880,7 +914,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           className={`transition-all duration-300 z-40 ${
             isExpanded
               ? "fixed inset-x-4 top-20 sm:top-24 sm:right-6 sm:left-auto sm:w-96 rounded-3xl bg-slate-950 p-3 shadow-2xl border border-pink-300/40"
-              : "fixed bottom-2 right-2 w-1 h-1 opacity-0 pointer-events-none overflow-hidden"
+              : "fixed -left-[9999px] top-0 w-80 h-48 opacity-10 pointer-events-none overflow-hidden"
           }`}
         >
           {isExpanded && (

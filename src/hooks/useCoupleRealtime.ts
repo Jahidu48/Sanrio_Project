@@ -721,9 +721,10 @@ export function useCoupleRealtime({
       supabaseChannelRef.current = channel;
     }
 
-    // Local Cross-Tab BroadcastChannel
+    // Local Cross-Tab BroadcastChannel & Network SSE Stream
     let bc: BroadcastChannel | null = null;
     let presenceTimer: number | null = null;
+    let eventSource: EventSource | null = null;
 
     if (typeof window !== "undefined" && "BroadcastChannel" in window) {
       bc = new BroadcastChannel(`cinnamelo:${channelName}`);
@@ -744,154 +745,242 @@ export function useCoupleRealtime({
         }
       };
 
-      bc.onmessage = (ev) => {
-        const msg = ev.data;
-        if (!msg || typeof msg !== "object") return;
+    const handleBridgeEvent = (msg: any) => {
+      if (!msg || typeof msg !== "object") return;
 
-        switch (msg.type) {
-          case "presence-ping":
-            localPeerMapRef.current.set(msg.sessionId, {
-              role: msg.role,
-              lastSeen: Date.now(),
-            });
-            recomputeLocalPeers();
-            break;
-          case "presence-leave":
-            localPeerMapRef.current.delete(msg.sessionId);
-            recomputeLocalPeers();
-            break;
-          case "heartbeat": {
-            const event = msg.payload as HeartbeatEvent;
-            if (!event?.id || markSeen(event.id)) return;
-            heartbeatCallbackRef.current?.(event);
-            break;
-          }
-          case "qna-updated": {
-            const updated = msg.payload as DailyQnA;
-            if (updated?.prompt_date === todayISO) setTodayQnA(updated);
-            break;
-          }
-          case "canvas-stroke": {
-            const seg = msg.payload as StrokeSegment;
-            if (!seg?.id || markSeen(seg.id)) return;
-            strokeCallbackRef.current?.(seg);
-            break;
-          }
-          case "canvas-stamp": {
-            const stamp = msg.payload as CanvasStamp;
-            if (!stamp?.id || markSeen(stamp.id)) return;
-            setStamps((prev) => [...prev, stamp]);
-            break;
-          }
-          case "canvas-clear": {
-            if (msg.id && markSeen(msg.id)) return;
-            setStamps([]);
-            clearCanvasCallbackRef.current?.();
-            break;
-          }
-          case "canvas-cursor": {
-            const cursor = msg.payload as PartnerCursor;
-            if (cursor && cursor.role !== profile.role) setPartnerCursor(cursor);
-            break;
-          }
-          case "note-upsert": {
-            if (!msg.eventId || markSeen(msg.eventId)) return;
-            applyIncomingNote(msg.note as SharedNote);
-            break;
-          }
-          case "note-delete": {
-            if (!msg.eventId || markSeen(msg.eventId)) return;
-            applyDeleteNote(msg.noteId as string);
-            break;
-          }
-          case "note-typing": {
-            const typing = msg.payload as NoteTypingStatus;
-            if (typing && typing.role !== profile.role) setPartnerTyping(typing);
-            break;
-          }
-          case "bucket-sync": {
-            if (!msg.eventId || markSeen(msg.eventId)) return;
-            applyIncomingBucketList(msg.items as BucketItem[]);
-            break;
-          }
-          case "games-sync": {
-            if (!msg.eventId || markSeen(msg.eventId)) return;
-            setGamesState(msg.state as CoupleGamesState);
-            break;
-          }
-          case "mini-doodle-stroke": {
-            const seg = msg.payload as StrokeSegment;
-            if (!seg?.id || markSeen(seg.id)) return;
-            miniDoodleStrokeRef.current?.(seg);
-            break;
-          }
-          case "mini-doodle-clear": {
-            if (msg.id && markSeen(msg.id)) return;
-            miniDoodleClearRef.current?.();
-            break;
-          }
-          case "chat-message": {
-            const m = msg.payload as ChatMessage;
-            if (!m?.id || markSeen(m.id)) return;
-            applyIncomingChatMessage(m);
-            break;
-          }
-          case "chat-typing": {
-            const status = msg.payload as ChatTypingStatus;
-            if (status && status.role !== profile.role) setChatTyping(status);
-            break;
-          }
-          case "chat-reaction": {
-            const p = msg.payload as { messageId: string; emoji: string; role: PartnerRole };
-            if (p?.messageId && p?.emoji) {
-              applyChatReaction(p.messageId, p.emoji, p.role);
-            }
-            break;
-          }
-          case "chat-read": {
-            const p = msg.payload as { role: PartnerRole };
-            if (p?.role) applyChatReadStatus(p.role);
-            break;
-          }
-          case "webrtc-signal": {
-            const signal = msg.payload as WebRTCSignalMessage;
-            if (signal?.id && !markSeen(signal.id)) {
-              handleWebRTCSignal(signal);
-            }
-            break;
-          }
-          case "partner-mood": {
-            const status = msg.payload as PartnerMoodStatus;
-            if (status && status.role !== profile.role) {
-              setPartnerMood(status);
-            }
-            break;
-          }
-          case "music-sync": {
-            const syncEv = msg.payload as MusicSyncEvent;
-            if (syncEv && syncEv.senderRole !== profile.role) {
-              setMusicSyncEvent(syncEv);
-              musicSyncCallbackRef.current?.(syncEv);
-            }
-            break;
-          }
-          case "playlist-sync": {
-            const items = msg.payload?.items as SharedPlaylistItem[];
-            if (items) {
-              setSharedPlaylist(items);
-              try {
-                window.localStorage.setItem(
-                  `${LOCAL_PLAYLIST_KEY}:${profile.roomId}`,
-                  JSON.stringify(items)
-                );
-              } catch {
-                // ignore
-              }
-            }
-            break;
-          }
+      switch (msg.type) {
+        case "presence-ping":
+          localPeerMapRef.current.set(msg.sessionId, {
+            role: msg.role,
+            lastSeen: Date.now(),
+          });
+          recomputeLocalPeers();
+          break;
+        case "presence-leave":
+          localPeerMapRef.current.delete(msg.sessionId);
+          recomputeLocalPeers();
+          break;
+        case "heartbeat": {
+          const event = msg.payload as HeartbeatEvent;
+          if (!event?.id || markSeen(event.id)) return;
+          heartbeatCallbackRef.current?.(event);
+          break;
         }
-      };
+        case "qna-updated": {
+          const updated = msg.payload as DailyQnA;
+          if (updated?.prompt_date === todayISO) setTodayQnA(updated);
+          break;
+        }
+        case "canvas-stroke": {
+          const seg = msg.payload as StrokeSegment;
+          if (!seg?.id || markSeen(seg.id)) return;
+          strokeCallbackRef.current?.(seg);
+          break;
+        }
+        case "canvas-stamp": {
+          const stamp = msg.payload as CanvasStamp;
+          if (!stamp?.id || markSeen(stamp.id)) return;
+          setStamps((prev) => [...prev, stamp]);
+          break;
+        }
+        case "canvas-clear": {
+          if (msg.id && markSeen(msg.id)) return;
+          setStamps([]);
+          clearCanvasCallbackRef.current?.();
+          break;
+        }
+        case "canvas-cursor": {
+          const cursor = msg.payload as PartnerCursor;
+          if (cursor && cursor.role !== profile.role) setPartnerCursor(cursor);
+          break;
+        }
+        case "note-upsert": {
+          if (!msg.eventId || markSeen(msg.eventId)) return;
+          applyIncomingNote((msg.note || msg.payload) as SharedNote);
+          break;
+        }
+        case "note-delete": {
+          if (!msg.eventId || markSeen(msg.eventId)) return;
+          applyDeleteNote(msg.noteId as string);
+          break;
+        }
+        case "note-typing": {
+          const typing = msg.payload as NoteTypingStatus;
+          if (typing && typing.role !== profile.role) setPartnerTyping(typing);
+          break;
+        }
+        case "bucket-sync": {
+          if (!msg.eventId || markSeen(msg.eventId)) return;
+          applyIncomingBucketList((msg.items || msg.payload) as BucketItem[]);
+          break;
+        }
+        case "games-sync": {
+          if (!msg.eventId || markSeen(msg.eventId)) return;
+          setGamesState((msg.state || msg.payload) as CoupleGamesState);
+          break;
+        }
+        case "mini-doodle-stroke": {
+          const seg = msg.payload as StrokeSegment;
+          if (!seg?.id || markSeen(seg.id)) return;
+          miniDoodleStrokeRef.current?.(seg);
+          break;
+        }
+        case "mini-doodle-clear": {
+          if (msg.id && markSeen(msg.id)) return;
+          miniDoodleClearRef.current?.();
+          break;
+        }
+        case "chat-message": {
+          const m = msg.payload as ChatMessage;
+          if (!m?.id || markSeen(m.id)) return;
+          applyIncomingChatMessage(m);
+          break;
+        }
+        case "chat-typing": {
+          const status = msg.payload as ChatTypingStatus;
+          if (status && status.role !== profile.role) setChatTyping(status);
+          break;
+        }
+        case "chat-reaction": {
+          const p = msg.payload as { messageId: string; emoji: string; role: PartnerRole };
+          if (p?.messageId && p?.emoji) {
+            applyChatReaction(p.messageId, p.emoji, p.role);
+          }
+          break;
+        }
+        case "chat-read": {
+          const p = msg.payload as { role: PartnerRole };
+          if (p?.role) applyChatReadStatus(p.role);
+          break;
+        }
+        case "webrtc-signal": {
+          const signal = msg.payload as WebRTCSignalMessage;
+          if (signal?.id && !markSeen(signal.id)) {
+            handleWebRTCSignal(signal);
+          }
+          break;
+        }
+        case "partner-mood": {
+          const status = msg.payload as PartnerMoodStatus;
+          if (status && status.role !== profile.role) {
+            setPartnerMood(status);
+          }
+          break;
+        }
+        case "music-sync": {
+          const syncEv = msg.payload as MusicSyncEvent;
+          if (syncEv && syncEv.senderRole !== profile.role) {
+            setMusicSyncEvent(syncEv);
+            musicSyncCallbackRef.current?.(syncEv);
+          }
+          break;
+        }
+        case "playlist-sync": {
+          const items = (msg.payload?.items || msg.payload) as SharedPlaylistItem[];
+          if (Array.isArray(items)) {
+            setSharedPlaylist(items);
+            try {
+              window.localStorage.setItem(
+                `${LOCAL_PLAYLIST_KEY}:${profile.roomId}`,
+                JSON.stringify(items)
+              );
+            } catch {
+              // ignore
+            }
+          }
+          break;
+        }
+        case "jockie-sync": {
+          if (typeof window !== "undefined" && msg.payload) {
+            window.dispatchEvent(
+              new CustomEvent("remote-jockie-sync", { detail: msg.payload })
+            );
+          }
+          break;
+        }
+      }
+    };
+
+    bc.onmessage = (ev) => {
+      handleBridgeEvent(ev.data);
+    };
+
+    // Network Cross-Device SSE Stream (Instant 2-way sync across physical devices)
+    if (typeof window !== "undefined" && typeof EventSource !== "undefined") {
+      try {
+        const sseUrl = `/api/realtime-sync?roomId=${encodeURIComponent(
+          profile.roomId
+        )}&role=${encodeURIComponent(profile.role)}&sessionId=${encodeURIComponent(
+          sessionId
+        )}`;
+        eventSource = new EventSource(sseUrl);
+
+        eventSource.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (!data || typeof data !== "object") return;
+
+            // 1. Initial snapshot on connect
+            if (data.type === "snapshot" && data.payload) {
+              const p = data.payload.presence;
+              if (p) {
+                const active = new Set<PartnerRole>();
+                if (p.user_a) active.add("user_a");
+                if (p.user_b) active.add("user_b");
+                setOnlineRoles(active);
+              }
+              if (
+                Array.isArray(data.payload.recentMessages) &&
+                data.payload.recentMessages.length > 0
+              ) {
+                setChatMessages((prev) => {
+                  const map = new Map(prev.map((m) => [m.id, m]));
+                  for (const msg of data.payload.recentMessages) {
+                    map.set(msg.id, msg);
+                  }
+                  return Array.from(map.values()).sort(
+                    (a, b) =>
+                      new Date(a.created_at).getTime() -
+                      new Date(b.created_at).getTime()
+                  );
+                });
+              }
+              if (data.payload.musicState && typeof window !== "undefined") {
+                window.dispatchEvent(
+                  new CustomEvent("remote-jockie-sync", {
+                    detail: data.payload.musicState,
+                  })
+                );
+              }
+              if (data.payload.qna && data.payload.qna.prompt_date === todayISO) {
+                setTodayQnA(data.payload.qna);
+              }
+              return;
+            }
+
+            // 2. Presence updates
+            if (data.type === "presence" && data.payload) {
+              const p = data.payload;
+              const active = new Set<PartnerRole>();
+              if (p.user_a) active.add("user_a");
+              if (p.user_b) active.add("user_b");
+              setOnlineRoles(active);
+              return;
+            }
+
+            // 3. Skip echo of own messages sent via SSE
+            if (data.senderSessionId === sessionId) return;
+
+            // 4. Forward to dispatcher
+            handleBridgeEvent(data);
+          } catch {
+            // ignore
+          }
+        };
+      } catch (err) {
+        console.warn("[SSE connection failed]", err);
+      }
+    }
 
       bc.postMessage({ type: "presence-ping", sessionId, role: profile.role });
       presenceTimer = window.setInterval(() => {
@@ -910,6 +999,9 @@ export function useCoupleRealtime({
         bc.postMessage({ type: "presence-leave", sessionId });
         bc.close();
       }
+      if (eventSource) {
+        eventSource.close();
+      }
       localBroadcastRef.current = null;
       if (supabase && supabaseChannelRef.current) {
         supabase.removeChannel(supabaseChannelRef.current);
@@ -926,6 +1018,43 @@ export function useCoupleRealtime({
     todayISO,
   ]);
 
+  // Unified Multi-Channel Real-time Broadcaster (Supabase + Local BroadcastChannel + SSE Hub)
+  const emitRealtime = useCallback(
+    (event: string, payload: any, extra: Record<string, any> = {}) => {
+      // 1. Supabase Postgres Realtime (if configured)
+      supabaseChannelRef.current?.send({
+        type: "broadcast",
+        event,
+        payload,
+        ...extra,
+      });
+
+      // 2. Local Cross-Tab Broadcast Channel (within same browser)
+      localBroadcastRef.current?.postMessage({
+        type: event,
+        payload,
+        ...extra,
+      });
+
+      // 3. Network SSE Hub API (Instant sync between phone and PC over network)
+      if (typeof window !== "undefined") {
+        fetch("/api/realtime-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomId: profile.roomId,
+            event,
+            payload,
+            senderRole: profile.role,
+            senderSessionId: sessionId,
+            ...extra,
+          }),
+        }).catch(() => {});
+      }
+    },
+    [profile.roomId, profile.role, sessionId]
+  );
+
   // --------------------------------------------------------------------------
   // HOME ACTIONS (Heartbeat & Daily Secret Envelope)
   // --------------------------------------------------------------------------
@@ -941,13 +1070,8 @@ export function useCoupleRealtime({
     markSeen(event.id);
     heartbeatCallbackRef.current?.(event);
 
-    await supabaseChannelRef.current?.send({
-      type: "broadcast",
-      event: "heartbeat",
-      payload: event,
-    });
-    localBroadcastRef.current?.postMessage({ type: "heartbeat", payload: event });
-  }, [markSeen, profile.role, profile.userAName, profile.userBName]);
+    emitRealtime("heartbeat", event);
+  }, [emitRealtime, markSeen, profile.role, profile.userAName, profile.userBName]);
 
   const submitDailyAnswer = useCallback(
     async (answerText: string, overrideRole?: PartnerRole) => {
@@ -1002,17 +1126,9 @@ export function useCoupleRealtime({
         );
       }
 
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "qna-updated",
-        payload: optimisticRow,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "qna-updated",
-        payload: optimisticRow,
-      });
+      emitRealtime("qna-updated", optimisticRow);
     },
-    [profile.role, profile.roomId, profile.userAName, profile.userBName, todayISO, todayQnA]
+    [emitRealtime, profile.role, profile.roomId, profile.userAName, profile.userBName, todayISO, todayQnA]
   );
 
   const resetTodayPrompt = useCallback(
@@ -1036,17 +1152,9 @@ export function useCoupleRealtime({
         // ignore
       }
 
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "qna-updated",
-        payload: resetRow,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "qna-updated",
-        payload: resetRow,
-      });
+      emitRealtime("qna-updated", resetRow);
     },
-    [profile.roomId, todayISO, todayQnA]
+    [emitRealtime, profile.roomId, todayISO, todayQnA]
   );
 
   // --------------------------------------------------------------------------
@@ -1060,17 +1168,9 @@ export function useCoupleRealtime({
         senderRole: profile.role,
       };
       markSeen(fullSegment.id);
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "canvas-stroke",
-        payload: fullSegment,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "canvas-stroke",
-        payload: fullSegment,
-      });
+      emitRealtime("canvas-stroke", fullSegment);
     },
-    [markSeen, profile.role]
+    [emitRealtime, markSeen, profile.role]
   );
 
   const placeStamp = useCallback(
@@ -1095,17 +1195,9 @@ export function useCoupleRealtime({
         return next;
       });
 
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "canvas-stamp",
-        payload: stamp,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "canvas-stamp",
-        payload: stamp,
-      });
+      emitRealtime("canvas-stamp", stamp);
     },
-    [markSeen, profile.role, profile.roomId]
+    [emitRealtime, markSeen, profile.role, profile.roomId]
   );
 
   const clearSharedCanvas = useCallback(() => {
@@ -1119,16 +1211,8 @@ export function useCoupleRealtime({
     } catch {
       // ignore
     }
-    supabaseChannelRef.current?.send({
-      type: "broadcast",
-      event: "canvas-clear",
-      payload: { id: clearId },
-    });
-    localBroadcastRef.current?.postMessage({
-      type: "canvas-clear",
-      id: clearId,
-    });
-  }, [markSeen, profile.roomId]);
+    emitRealtime("canvas-clear", { id: clearId }, { id: clearId });
+  }, [emitRealtime, markSeen, profile.roomId]);
 
   const broadcastCursor = useCallback(
     (x: number, y: number, color: string) => {
@@ -1141,17 +1225,9 @@ export function useCoupleRealtime({
         color,
         updatedAt: Date.now(),
       };
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "canvas-cursor",
-        payload: cursor,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "canvas-cursor",
-        payload: cursor,
-      });
+      emitRealtime("canvas-cursor", cursor);
     },
-    [profile.role, profile.userAName, profile.userBName]
+    [emitRealtime, profile.role, profile.userAName, profile.userBName]
   );
 
   // --------------------------------------------------------------------------
@@ -1183,18 +1259,9 @@ export function useCoupleRealtime({
         await supabase.from("shared_notes").upsert(note, { onConflict: "id" });
       }
 
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "note-upsert",
-        payload: { eventId, note },
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "note-upsert",
-        eventId,
-        note,
-      });
+      emitRealtime("note-upsert", { eventId, note }, { eventId, note });
     },
-    [markSeen, profile.roomId]
+    [emitRealtime, markSeen, profile.roomId]
   );
 
   const createSharedNote = useCallback(
@@ -1237,17 +1304,9 @@ export function useCoupleRealtime({
         name: author,
         timestamp: Date.now(),
       };
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "note-typing",
-        payload: typingPayload,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "note-typing",
-        payload: typingPayload,
-      });
+      emitRealtime("note-typing", typingPayload);
     },
-    [profile.role, profile.userAName, profile.userBName, syncSharedNote]
+    [emitRealtime, profile.role, profile.userAName, profile.userBName, syncSharedNote]
   );
 
   const deleteSharedNote = useCallback(
@@ -1273,18 +1332,9 @@ export function useCoupleRealtime({
         await supabase.from("shared_notes").delete().eq("id", noteId);
       }
 
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "note-delete",
-        payload: { eventId, noteId },
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "note-delete",
-        eventId,
-        noteId,
-      });
+      emitRealtime("note-delete", { eventId, noteId }, { eventId, noteId });
     },
-    [markSeen, profile.roomId]
+    [emitRealtime, markSeen, profile.roomId]
   );
 
   // --------------------------------------------------------------------------
@@ -1304,18 +1354,9 @@ export function useCoupleRealtime({
         // ignore
       }
 
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "bucket-sync",
-        payload: { eventId, items },
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "bucket-sync",
-        eventId,
-        items,
-      });
+      emitRealtime("bucket-sync", { eventId, items }, { eventId, items });
     },
-    [markSeen, profile.roomId]
+    [emitRealtime, markSeen, profile.roomId]
   );
 
   const addBucketItem = useCallback(
@@ -1404,20 +1445,15 @@ export function useCoupleRealtime({
           // ignore
         }
 
-        supabaseChannelRef.current?.send({
-          type: "broadcast",
-          event: "games-sync",
-          payload: { eventId, state: next },
-        });
-        localBroadcastRef.current?.postMessage({
-          type: "games-sync",
-          eventId,
-          state: next,
-        });
+        emitRealtime(
+          "games-sync",
+          { eventId, state: next },
+          { eventId, state: next }
+        );
         return next;
       });
     },
-    [markSeen, profile.roomId]
+    [emitRealtime, markSeen, profile.roomId]
   );
 
   const broadcastMiniDoodleStroke = useCallback(
@@ -1428,32 +1464,16 @@ export function useCoupleRealtime({
         senderRole: profile.role,
       };
       markSeen(fullSegment.id);
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "mini-doodle-stroke",
-        payload: fullSegment,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "mini-doodle-stroke",
-        payload: fullSegment,
-      });
+      emitRealtime("mini-doodle-stroke", fullSegment);
     },
-    [markSeen, profile.role]
+    [emitRealtime, markSeen, profile.role]
   );
 
   const clearMiniDoodle = useCallback(() => {
     const id = `mclr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     markSeen(id);
-    supabaseChannelRef.current?.send({
-      type: "broadcast",
-      event: "mini-doodle-clear",
-      payload: { id },
-    });
-    localBroadcastRef.current?.postMessage({
-      type: "mini-doodle-clear",
-      id,
-    });
-  }, [markSeen]);
+    emitRealtime("mini-doodle-clear", { id }, { id });
+  }, [emitRealtime, markSeen]);
 
   // --------------------------------------------------------------------------
   // COUPLE MESSENGER ACTIONS (Chat, Attachments & WebRTC Call)
@@ -1524,17 +1544,16 @@ export function useCoupleRealtime({
           );
       }
 
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "chat-message",
-        payload: newMsg,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "chat-message",
-        payload: newMsg,
-      });
+      emitRealtime("chat-message", newMsg);
+
+      // If sender entered a Jockie bot command (!play, !stop, !pause, etc.), trigger locally too!
+      if (newMsg.text?.startsWith("!") && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("jockie-command", { detail: { text: newMsg.text } })
+        );
+      }
     },
-    [markSeen, profile.role, profile.roomId, profile.userACharacter, profile.userAName, profile.userBCharacter, profile.userBName]
+    [emitRealtime, markSeen, profile.role, profile.roomId, profile.userACharacter, profile.userAName, profile.userBCharacter, profile.userBName]
   );
 
   const sendChatTyping = useCallback(() => {
@@ -1545,16 +1564,8 @@ export function useCoupleRealtime({
       name: senderName,
       timestamp: Date.now(),
     };
-    supabaseChannelRef.current?.send({
-      type: "broadcast",
-      event: "chat-typing",
-      payload: status,
-    });
-    localBroadcastRef.current?.postMessage({
-      type: "chat-typing",
-      payload: status,
-    });
-  }, [profile.role, profile.userAName, profile.userBName]);
+    emitRealtime("chat-typing", status);
+  }, [emitRealtime, profile.role, profile.userAName, profile.userBName]);
 
   const addChatReaction = useCallback(
     (messageId: string, emoji: string) => {
@@ -1587,17 +1598,9 @@ export function useCoupleRealtime({
       });
 
       const payload = { messageId, emoji, role: profile.role };
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "chat-reaction",
-        payload,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "chat-reaction",
-        payload,
-      });
+      emitRealtime("chat-reaction", payload);
     },
-    [profile.role, profile.roomId]
+    [emitRealtime, profile.role, profile.roomId]
   );
 
   const markChatMessagesAsRead = useCallback(() => {
@@ -1616,16 +1619,8 @@ export function useCoupleRealtime({
       return next;
     });
 
-    supabaseChannelRef.current?.send({
-      type: "broadcast",
-      event: "chat-read",
-      payload: { role: profile.role },
-    });
-    localBroadcastRef.current?.postMessage({
-      type: "chat-read",
-      payload: { role: profile.role },
-    });
-  }, [profile.role, profile.roomId]);
+    emitRealtime("chat-read", { role: profile.role });
+  }, [emitRealtime, profile.role, profile.roomId]);
 
   const sendCallSignal = useCallback(
     (
@@ -1646,17 +1641,9 @@ export function useCoupleRealtime({
       };
       markSeen(signal.id);
 
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "webrtc-signal",
-        payload: signal,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "webrtc-signal",
-        payload: signal,
-      });
+      emitRealtime("webrtc-signal", signal);
     },
-    [markSeen, profile.role, profile.roomId, profile.userAName, profile.userBName]
+    [emitRealtime, markSeen, profile.role, profile.roomId, profile.userAName, profile.userBName]
   );
 
   const dismissIncomingCall = useCallback(() => {
@@ -1684,17 +1671,9 @@ export function useCoupleRealtime({
       };
       setMyMood(newMood);
 
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "partner-mood",
-        payload: newMood,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "partner-mood",
-        payload: newMood,
-      });
+      emitRealtime("partner-mood", newMood);
     },
-    [profile.role, profile.userACharacter, profile.userBCharacter]
+    [emitRealtime, profile.role, profile.userACharacter, profile.userBCharacter]
   );
 
   const broadcastMusicSync = useCallback(
@@ -1716,17 +1695,9 @@ export function useCoupleRealtime({
       };
       setMusicSyncEvent(syncEvent);
 
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "music-sync",
-        payload: syncEvent,
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "music-sync",
-        payload: syncEvent,
-      });
+      emitRealtime("music-sync", syncEvent);
     },
-    [profile.role, profile.userAName, profile.userBName]
+    [emitRealtime, profile.role, profile.userAName, profile.userBName]
   );
 
   const addToPlaylist = useCallback(
@@ -1759,17 +1730,9 @@ export function useCoupleRealtime({
         return next;
       });
 
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event: "playlist-sync",
-        payload: { items: [...sharedPlaylist, newItem] },
-      });
-      localBroadcastRef.current?.postMessage({
-        type: "playlist-sync",
-        payload: { items: [...sharedPlaylist, newItem] },
-      });
+      emitRealtime("playlist-sync", { items: [...sharedPlaylist, newItem] });
     },
-    [profile.role, profile.roomId, profile.userAName, profile.userBName, sharedPlaylist]
+    [emitRealtime, profile.role, profile.roomId, profile.userAName, profile.userBName, sharedPlaylist]
   );
 
   const removeFromPlaylist = useCallback(
@@ -1784,19 +1747,11 @@ export function useCoupleRealtime({
         } catch {
           // ignore
         }
-        supabaseChannelRef.current?.send({
-          type: "broadcast",
-          event: "playlist-sync",
-          payload: { items: next },
-        });
-        localBroadcastRef.current?.postMessage({
-          type: "playlist-sync",
-          payload: { items: next },
-        });
+        emitRealtime("playlist-sync", { items: next });
         return next;
       });
     },
-    [profile.roomId]
+    [emitRealtime, profile.roomId]
   );
 
   const unreadChatCount = useMemo(() => {
