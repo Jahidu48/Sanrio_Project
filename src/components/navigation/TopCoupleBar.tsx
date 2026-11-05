@@ -53,6 +53,7 @@ export interface TopCoupleBarProps {
   onOpenCharacterModal: () => void;
   onOpenSharedMusicModal?: () => void;
   onOpenPairingModal?: () => void;
+  onOpenPermissionsModal?: () => void;
 }
 
 export function TopCoupleBar({
@@ -65,6 +66,7 @@ export function TopCoupleBar({
   onOpenCharacterModal,
   onOpenSharedMusicModal,
   onOpenPairingModal,
+  onOpenPermissionsModal,
 }: TopCoupleBarProps) {
   const { isDark, toggleTheme } = useTheme();
   const {
@@ -142,6 +144,10 @@ export function TopCoupleBar({
 
   const handleToggleNotification = async () => {
     playPop();
+    if (onOpenPermissionsModal) {
+      onOpenPermissionsModal();
+      return;
+    }
     if (notificationPermission === "granted") {
       sendDeviceNotification("Tes Notifikasi Berhasil! 🔔💖", {
         body: "Perangkat ini siap menerima kabar saat pasangan masuk web, chat, atau detak rindu!",

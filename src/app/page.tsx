@@ -25,6 +25,7 @@ import { SharedMusicPlayerModal } from "@/components/music/SharedMusicPlayerModa
 import { JockieMusicBot } from "@/components/music/JockieMusicBot";
 import { PartnerListeningBanner } from "@/components/music/PartnerListeningBanner";
 import { SanrioNotificationToast } from "@/components/navigation/SanrioNotificationToast";
+import { DevicePermissionsModal } from "@/components/navigation/DevicePermissionsModal";
 import { SharedMusicProvider } from "@/context/SharedMusicContext";
 import type { MiniDoodleCanvasHandle } from "@/components/play/DoodleGuessGame";
 import { SharedJournalTab } from "@/components/journal/SharedJournalTab";
@@ -72,6 +73,7 @@ export default function CoupleSpaceDashboard() {
   const [openCharacterModal, setOpenCharacterModal] = useState(false);
   const [openMusicModal, setOpenMusicModal] = useState(false);
   const [openPairingModal, setOpenPairingModal] = useState(false);
+  const [openPermissionsModal, setOpenPermissionsModal] = useState(false);
   const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
   const [activeOutgoingCall, setActiveOutgoingCall] = useState<{
     type: WebRTCCallType;
@@ -197,7 +199,7 @@ export default function CoupleSpaceDashboard() {
       setActiveToast(event);
       playChime();
 
-      if (event.senderRole !== profile.role && typeof document !== "undefined" && document.hidden) {
+      if (event.senderRole !== profile.role) {
         notifyHeartbeat(event.senderName);
       }
 
@@ -424,6 +426,7 @@ export default function CoupleSpaceDashboard() {
             onOpenCharacterModal={() => setOpenCharacterModal(true)}
             onOpenSharedMusicModal={() => setOpenMusicModal(true)}
             onOpenPairingModal={() => setOpenPairingModal(true)}
+            onOpenPermissionsModal={() => setOpenPermissionsModal(true)}
           />
 
           <main className="w-full flex-1 px-3 sm:px-6 lg:px-8 pt-4 sm:pt-5 pb-32 lg:pb-12">
@@ -619,6 +622,12 @@ export default function CoupleSpaceDashboard() {
         onClose={() => setOpenCharacterModal(false)}
         profile={profile}
         onUpdateProfile={handleUpdateProfile}
+      />
+
+      {/* Device & Web Permissions Hub Modal (Mic, Camera, GPS, Notifications) */}
+      <DevicePermissionsModal
+        open={openPermissionsModal}
+        onClose={() => setOpenPermissionsModal(false)}
       />
 
       {/* WebRTC Voice & Video Call Modal (Incoming & Active Call) */}

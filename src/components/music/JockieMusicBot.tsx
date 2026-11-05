@@ -337,10 +337,24 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000;
             const currentPos = player.getCurrentTime ? player.getCurrentTime() : 0;
             const drift = Math.abs(currentPos - targetTime);
+            const state = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
 
-            if (drift > 2.5) {
+            // DISCORD JOCKIE ARCHITECTURE:
+            // Never seek while playing smoothly or buffering!
+            if (state !== 1 && state !== 3) {
               player.seekTo?.(targetTime, true);
+            } else if (drift > 10 && state !== 3) {
+              player.seekTo?.(targetTime, true);
+            } else if (drift > 1.5 && drift <= 6) {
+              const rate = currentPos < targetTime ? 1.05 : 0.95;
+              player.setPlaybackRate?.(rate);
+              window.setTimeout(() => {
+                if (playerRef.current?.setPlaybackRate) {
+                  playerRef.current.setPlaybackRate(1.0);
+                }
+              }, 3000);
             }
+
             const playPromise = player.playVideo?.();
             if (playPromise && typeof playPromise.catch === "function") {
               playPromise.catch(() => setNeedsUnlock(true));
@@ -501,7 +515,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     }, [isApiReady, roomState.isPlaying, roomState.videoId, roomState.pausedAtSeconds, roomState.startedAtServerTime, handleTrackEnded]);
 
     // ------------------------------------------------------------------------
-    // 6. EXACT TIMESTAMP DRIFT CORRECTION (SAFE & RELAXED FOR MOBILE)
+    // 6. DISCORD JOCKIE ARCHITECTURE: ZERO-BUFFERING CONTINUOUS SYNC
     // ------------------------------------------------------------------------
     useEffect(() => {
       if (!roomState.isPlaying) return;
@@ -530,14 +544,25 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
         const drift = Math.abs(currentPos - targetTime);
         const now = Date.now();
 
-        // 3s drift threshold with buffering guard and 3.5s cooldown for tight, seamless sync
-        if (drift > 3 && now - lastSeekTimeRef.current > 3500) {
+        // Discord Jockie Music Architecture:
+        // Normal playback NEVER flushes HTML5 buffer or triggers a loading spinner.
+        // For minor drift (1.5s - 6s): nudge playback rate by 5% without any buffering.
+        if (drift > 1.5 && drift <= 6) {
+          const rate = currentPos < targetTime ? 1.05 : 0.95;
+          player.setPlaybackRate?.(rate);
+          window.setTimeout(() => {
+            if (playerRef.current?.setPlaybackRate) {
+              playerRef.current.setPlaybackRate(1.0);
+            }
+          }, 3000);
+        } else if (drift > 12 && now - lastSeekTimeRef.current > 15000) {
+          // Only seek if drift is massive (> 12s) with 15s cooldown
           lastSeekTimeRef.current = now;
           player.seekTo(targetTime, true);
           player.playVideo();
           setPlayerStatusText(`Sinkronisasi Jockie Bot (drift: ${drift.toFixed(1)}s)`);
         }
-      }, 2500);
+      }, 3000);
 
       return () => window.clearInterval(interval);
     }, [roomState.isPlaying, roomState.startedAtServerTime, roomState.pausedAtSeconds]);
@@ -1043,6 +1068,21 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
             style={{ transform: "translateZ(0)", willChange: "transform" }}
           >
             <div id="global-jockie-yt-player" className="h-full w-full" />
+
+            {/* Mobile Audio Autoplay Touch Unlock Overlay */}
+            {needsUnlock && isExpanded && (
+              <button
+                type="button"
+                onClick={handleUnlockAudio}
+                className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/85 backdrop-blur-xs text-white p-4 cursor-pointer"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg animate-pulse mb-2">
+                  <Play className="h-6 w-6 ml-0.5 fill-white" />
+                </div>
+                <span className="text-xs font-bold">Ketuk untuk Putar Bersama 🎵</span>
+                <span className="text-[10px] text-pink-200 mt-0.5">Izinkan pemutaran audio di HP / Laptop</span>
+              </button>
+            )}
           </div>
         </div>
 

@@ -95,7 +95,24 @@ export async function sendDeviceNotification(
     },
   };
 
-  // 4. Try via Service Worker Registration with an 800ms race timeout to avoid hanging
+  // 4. On Desktop, try direct window Notification first or in parallel for immediate OS balloon
+  let showedDirectNotification = false;
+  try {
+    const n = new Notification(title, {
+      ...payload,
+      tag: payload.tag || `notif_${Date.now()}`,
+    } as NotificationOptions);
+    n.onclick = () => {
+      window.focus();
+      n.close();
+    };
+    showedDirectNotification = true;
+  } catch (err) {
+    // Some mobile browsers (Android Chrome) require ServiceWorker showNotification
+    console.debug("Direct Notification() not supported or requires ServiceWorker:", err);
+  }
+
+  // 5. Also dispatch via Service Worker Registration (essential for PWA and Mobile background push)
   if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
     try {
       const regPromise = navigator.serviceWorker.ready;
@@ -108,22 +125,11 @@ export async function sendDeviceNotification(
         return true;
       }
     } catch (e) {
-      console.warn("ServiceWorker showNotification failed, trying fallback:", e);
+      console.warn("ServiceWorker showNotification failed:", e);
     }
   }
 
-  // 5. Direct Window Notification Fallback (Desktop / Safari / Non-SW)
-  try {
-    const n = new Notification(title, payload as NotificationOptions);
-    n.onclick = () => {
-      window.focus();
-      n.close();
-    };
-    return true;
-  } catch (err) {
-    console.warn("new Notification() fallback failed:", err);
-    return false;
-  }
+  return showedDirectNotification;
 }
 
 // ----------------------------------------------------------------------------

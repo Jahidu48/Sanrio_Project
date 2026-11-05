@@ -1,4 +1,4 @@
-const CACHE_NAME = "cinnamelo-pwa-v3";
+const CACHE_NAME = "cinnamelo-pwa-v4";
 const APP_SHELL = ["/manifest.json", "/icons/icon-192.svg", "/icons/icon-512.svg"];
 
 self.addEventListener("install", (event) => {

@@ -547,6 +547,11 @@ export function useCoupleRealtime({
 
     const handleWebRTCSignal = (signal: WebRTCSignalMessage) => {
       if (signal.caller_role === profile.role) return;
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("sanrio-webrtc-signal", { detail: signal })
+        );
+      }
       if (signal.type === "call-offer") {
         setActiveIncomingCall(signal);
         incomingCallCallbackRef.current?.(signal);
