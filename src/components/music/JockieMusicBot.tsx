@@ -315,30 +315,43 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           const currentVidData = player.getVideoData ? player.getVideoData() : null;
           const isSameVideo = currentVidData?.video_id && currentVidData.video_id === remote.videoId;
           const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
-          const isCurrentlyPlaying = playerState === 1;
+          const isActivelyActive = playerState === 1 || playerState === 3; // playing or actively buffering
 
           if (!isSameVideo) {
+            const targetTime = Math.max(
+              0,
+              remote.pausedAtSeconds +
+                (remote.isPlaying ? (Date.now() - remote.startedAtServerTime) / 1000 : 0)
+            );
             player.loadVideoById({
               videoId: remote.videoId,
-              startSeconds: remote.pausedAtSeconds || 0,
+              startSeconds: targetTime,
             });
-          }
-
-          if (remote.isPlaying) {
-            // Only seek if NOT already playing the same video smoothly!
-            // Prevents cross-device state updates (like chat or queue changes) from wiping mobile video buffer
-            if (!isCurrentlyPlaying || !isSameVideo) {
-              const targetTime =
-                remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000;
-              player.seekTo?.(Math.max(0, targetTime), true);
-            }
-            const playPromise = player.playVideo?.();
-            if (playPromise && typeof playPromise.catch === "function") {
-              playPromise.catch(() => setNeedsUnlock(true));
+            if (remote.isPlaying) {
+              const playPromise = player.playVideo?.();
+              if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch(() => setNeedsUnlock(true));
+              }
             }
           } else {
-            player.pauseVideo?.();
-            player.seekTo?.(remote.pausedAtSeconds, true);
+            // Same video
+            if (remote.isPlaying) {
+              // Only seek if NOT currently playing or buffering (avoids wiping active mobile video buffer)
+              if (!isActivelyActive) {
+                const targetTime = Math.max(
+                  0,
+                  remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000
+                );
+                player.seekTo?.(targetTime, true);
+              }
+              const playPromise = player.playVideo?.();
+              if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch(() => setNeedsUnlock(true));
+              }
+            } else {
+              player.pauseVideo?.();
+              player.seekTo?.(remote.pausedAtSeconds, true);
+            }
           }
         } catch {
           setNeedsUnlock(true);
@@ -812,15 +825,13 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
 
       try {
         setIsBuffering(false);
-        const curPos = player.getCurrentTime ? player.getCurrentTime() : currentTime;
         player.unMute?.();
-        player.seekTo?.(curPos, true);
         player.playVideo?.();
-        setPlayerStatusText("Video disegarkan & sinkron 🎬");
+        setPlayerStatusText("Video dilanjutkan 🎬");
       } catch (e) {
         console.warn("Force resync error", e);
       }
-    }, [currentTime]);
+    }, []);
 
     // Fullscreen toggle for optimal mobile hardware video playback
     const handleToggleFullscreen = useCallback(() => {
@@ -989,7 +1000,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           className={`fixed z-40 transition-opacity duration-150 ${
             isExpanded
               ? "inset-x-3 top-20 sm:top-24 sm:right-6 sm:left-auto sm:w-96 rounded-2xl bg-slate-950 p-2.5 border border-pink-400/40 shadow-xl opacity-100 pointer-events-auto"
-              : "w-80 sm:w-96 -left-[200vw] top-0 opacity-0 pointer-events-none -z-50"
+              : "bottom-2 right-2 w-48 h-28 opacity-0 pointer-events-none -z-50"
           }`}
         >
           <div className="flex items-center justify-between pb-2 text-white text-xs px-1">
@@ -1015,7 +1026,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               <button
                 type="button"
                 onClick={handleToggleFullscreen}
-                className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-medium flex items-center gap-1 text-[11px] shadow-xs cursor-pointer"
+                className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-medium flex items-center gap-1 text-[11px] shadow-xs cursor-pointer active:scale-95"
                 title="Buka Layar Penuh (Fullscreen)"
               >
                 <Maximize2 className="h-3 w-3" />
@@ -1032,12 +1043,26 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
             </div>
           </div>
 
-          <div className="relative w-full pb-[56.25%] bg-black rounded-xl overflow-hidden">
+          <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black">
             <div
               id="global-jockie-yt-player"
               className="absolute inset-0 w-full h-full"
             />
           </div>
+
+          {/* Quick One-Tap Fullscreen Helper for Mobile */}
+          {isBuffering && (
+            <div className="mt-1.5 px-1 py-1 flex items-center justify-between text-[10px] text-pink-300 bg-pink-950/50 rounded-lg border border-pink-500/20">
+              <span className="truncate">Di HP loading? Ketuk Layar Penuh 🎬</span>
+              <button
+                type="button"
+                onClick={handleToggleFullscreen}
+                className="shrink-0 font-bold underline text-white hover:text-pink-200 cursor-pointer ml-1"
+              >
+                Buka Penuh ↗
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 
@@ -1127,11 +1152,8 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
                       setIsExpanded(next);
                       if (next && playerRef.current) {
                         try {
-                          const player = playerRef.current;
-                          const curPos = player.getCurrentTime ? player.getCurrentTime() : currentTime;
-                          player.unMute?.();
-                          player.seekTo?.(curPos, true);
-                          player.playVideo?.();
+                          playerRef.current.unMute?.();
+                          playerRef.current.playVideo?.();
                         } catch {}
                       }
                     }}
