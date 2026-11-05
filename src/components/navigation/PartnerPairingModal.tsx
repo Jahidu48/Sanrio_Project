@@ -46,7 +46,25 @@ export function PartnerPairingModal({
       const url = new URL(window.location.href);
       url.searchParams.set("role", targetRole);
       url.searchParams.set("room", profile.roomId || "couple-room");
-      setPairingUrl(url.toString());
+
+      // If running on localhost on laptop, replace hostname with LAN IP for phone pairing
+      if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+        fetch("/api/realtime-sync?action=info")
+          .then((res) => res.json())
+          .then((data) => {
+            if (data?.localIp && data.localIp !== "localhost") {
+              url.hostname = data.localIp;
+              setPairingUrl(url.toString());
+            } else {
+              setPairingUrl(url.toString());
+            }
+          })
+          .catch(() => {
+            setPairingUrl(url.toString());
+          });
+      } else {
+        setPairingUrl(url.toString());
+      }
     }
   }, [profile.role, profile.roomId, open]);
 

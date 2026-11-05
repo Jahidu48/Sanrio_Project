@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import os from "os";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+function getLanIp(): string {
+  try {
+    const nets = os.networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      const list = nets[name];
+      if (!list) continue;
+      for (const net of list) {
+        if (net.family === "IPv4" && !net.internal) {
+          return net.address;
+        }
+      }
+    }
+  } catch {}
+  return "localhost";
+}
 
 interface ConnectedClient {
   id: string;
@@ -90,6 +107,15 @@ function broadcastToRoom(
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
+
+  // Return local network IP for 2-device WiFi pairing
+  if (searchParams.get("action") === "info") {
+    return NextResponse.json({
+      localIp: getLanIp(),
+      timestamp: Date.now(),
+    });
+  }
+
   const roomId = searchParams.get("roomId") || "couple-room";
   const role = searchParams.get("role") || "user_a";
   const sessionId =

@@ -4,7 +4,7 @@
   "private": true,
   "description": "Minimalist Romantic Sanrio Progressive Web App for Couples (Cinnamoroll, My Melody & Kuromi)",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
