@@ -121,17 +121,24 @@ export function PlaygroundTab({
   onNavigateToChat,
 }: PlaygroundTabProps) {
   const { playPop } = useAudio();
-  const [activeSubTab, setActiveSubTab] = useState<PlaygroundSubTab>("canvas");
+  const [activeSubTab, setActiveSubTab] = useState<PlaygroundSubTab>(
+    () => gamesState.activeSubTab || "canvas"
+  );
+
+  React.useEffect(() => {
+    if (gamesState.activeSubTab) {
+      setActiveSubTab(gamesState.activeSubTab);
+    }
+  }, [gamesState.activeSubTab]);
 
   const handleSwitchSubTab = (tabId: PlaygroundSubTab) => {
     playPop();
     setActiveSubTab(tabId);
-    if (tabId !== "canvas") {
-      onUpdateGamesState((prev) => ({
-        ...prev,
-        activeGame: tabId,
-      }));
-    }
+    onUpdateGamesState((prev) => ({
+      ...prev,
+      activeSubTab: tabId,
+      activeGame: tabId !== "canvas" ? tabId : prev.activeGame,
+    }));
   };
 
   return (

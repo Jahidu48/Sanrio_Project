@@ -324,3 +324,18 @@ export function notifyDailyAnswerSealed(partnerName: string) {
     targetTab: "home",
   });
 }
+
+export function notifyProfileCharacterChange(
+  partnerName: string,
+  characterName: string,
+  iconPath?: string
+) {
+  sendDeviceNotification(`Karakter ${partnerName} Diperbarui! ✨`, {
+    body: `${partnerName} kini tampil sebagai ${characterName}`,
+    icon: iconPath || "/characters/cinnamoroll.svg",
+    tag: "partner-character-update",
+    renotify: true,
+    tabTitleAlert: `✨ ${partnerName} -> ${characterName} - Sanrio Couple`,
+    targetTab: "home",
+  });
+}

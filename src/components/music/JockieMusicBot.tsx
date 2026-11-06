@@ -93,6 +93,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
       startedAtServerTime: initialState?.startedAtServerTime || Date.now(),
       pausedAtSeconds: initialState?.pausedAtSeconds || 0,
       updatedBy: initialState?.updatedBy || "System",
+      updatedAt: initialState?.updatedAt ?? 0,
       queue: initialState?.queue || [],
     });
 
@@ -164,94 +165,25 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     }, []);
 
     // ------------------------------------------------------------------------
-    // 2. SUPABASE REALTIME & CROSS-TAB BROADCAST CHANNEL SETUP
+    // 2. SUPABASE REALTIME & CROSS-TAB BROADCAST CHANNEL SETUP + AUTO-HANDSHAKE
     // ------------------------------------------------------------------------
-    useEffect(() => {
-      const channelName = `music-room:${profile.roomId}`;
-      const supabase = getSupabaseBrowserClient();
-
-      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
-        localBroadcastRef.current = new BroadcastChannel(channelName);
-        localBroadcastRef.current.onmessage = (event) => {
-          if (event.data?.type === "jockie-sync" && event.data.payload) {
-            handleRemoteStateUpdate(event.data.payload);
-          }
-        };
-      }
-
-      if (supabase) {
-        const ch = supabase.channel(channelName, {
-          config: { broadcast: { self: false } },
-        });
-
-        ch.on("broadcast", { event: "jockie-sync" }, ({ payload }) => {
-          if (payload) {
-            handleRemoteStateUpdate(payload);
-          }
-        })
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "music_room_state",
-              filter: `room_id=eq.${profile.roomId}`,
-            },
-            (payload: any) => {
-              if (payload.new) {
-                const row = payload.new;
-                handleRemoteStateUpdate({
-                  videoId: row.video_id,
-                  url: row.url,
-                  title: row.title,
-                  isPlaying: row.is_playing,
-                  startedAtServerTime: Number(row.started_at_server_time),
-                  pausedAtSeconds: Number(row.paused_at_seconds),
-                  updatedBy: row.updated_by,
-                  queue: Array.isArray(row.queue) ? row.queue : [],
-                });
-              }
-            }
-          )
-          .subscribe();
-
-        channelRef.current = ch;
-      }
-
-      // Restore saved state from local storage on mount
-      try {
-        const saved = window.localStorage.getItem(STORAGE_ROOM_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed && parsed.videoId) {
-            setRoomState({
-              ...parsed,
-              queue: Array.isArray(parsed.queue) ? parsed.queue : [],
-            });
-          }
-        }
-      } catch {
-        // ignore
-      }
-
-      return () => {
-        if (channelRef.current) {
-          channelRef.current.unsubscribe();
-        }
-        if (localBroadcastRef.current) {
-          localBroadcastRef.current.close();
-        }
-      };
-    }, [profile.roomId]);
+    const storageKey = `${STORAGE_ROOM_KEY}:${profile.roomId}`;
 
     // Broadcast state out
     const broadcastState = useCallback(
-      (nextState: MusicRoomState) => {
+      (nextStateInput: MusicRoomState) => {
+        const nextState: MusicRoomState = {
+          ...nextStateInput,
+          updatedAt: nextStateInput.updatedAt || Date.now(),
+          queue: Array.isArray(nextStateInput.queue) ? nextStateInput.queue : [],
+        };
+
+        roomStateRef.current = nextState;
         setRoomState(nextState);
         onRoomStateChange?.(nextState);
 
         try {
-          window.localStorage.setItem(STORAGE_ROOM_KEY, JSON.stringify(nextState));
+          window.localStorage.setItem(storageKey, JSON.stringify(nextState));
         } catch {
           // ignore
         }
@@ -294,65 +226,103 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               paused_at_seconds: nextState.pausedAtSeconds,
               updated_by: nextState.updatedBy,
               queue: nextState.queue || [],
-              updated_at: new Date().toISOString(),
+              updated_at: new Date(nextState.updatedAt || Date.now()).toISOString(),
             })
           ).catch(() => {});
         }
       },
-      [profile.roomId, onRoomStateChange]
+      [profile.roomId, profile.role, storageKey, onRoomStateChange]
     );
 
     // ------------------------------------------------------------------------
-    // 3. REMOTE STATE REACTION
+    // 3. REMOTE STATE REACTION (WITH LAST-WRITE-WINS TIMESTAMP PROTECTION)
     // ------------------------------------------------------------------------
     const handleRemoteStateUpdate = useCallback(
       (remote: MusicRoomState) => {
         if (!remote || !remote.videoId) return;
 
-        setRoomState({
-          ...remote,
-          queue: Array.isArray(remote.queue) ? remote.queue : [],
-        });
-        onRoomStateChange?.(remote);
+        const localUpdatedAt = roomStateRef.current.updatedAt ?? 0;
+        const remoteUpdatedAt = remote.updatedAt ?? 0;
 
-        // Stop local background MP3 so they don't clash
-        pauseLocalBgm();
+        // Ignore stale or unedited default payloads if this device has a newer track
+        if (localUpdatedAt > 0 && remoteUpdatedAt === 0) return;
+        if (
+          localUpdatedAt > 0 &&
+          remoteUpdatedAt > 0 &&
+          remoteUpdatedAt < localUpdatedAt
+        ) {
+          return;
+        }
+
+        const normalized: MusicRoomState = {
+          ...remote,
+          updatedAt: remoteUpdatedAt || Date.now(),
+          queue: Array.isArray(remote.queue) ? remote.queue : [],
+        };
+
+        const prevVid = roomStateRef.current.videoId;
+        roomStateRef.current = normalized;
+        setRoomState(normalized);
+        onRoomStateChange?.(normalized);
+
+        try {
+          window.localStorage.setItem(storageKey, JSON.stringify(normalized));
+        } catch {
+          // ignore
+        }
+
+        if (normalized.isPlaying) {
+          // Stop local background MP3 so they don't clash
+          pauseLocalBgm();
+        }
 
         const player = playerRef.current;
         if (!player || !isPlayerInitializedRef.current) {
-          pendingPlayVideoIdRef.current = remote.videoId;
+          pendingPlayVideoIdRef.current = normalized.videoId;
           return;
         }
 
         try {
-          const currentVideoData = player.getVideoData ? player.getVideoData() : null;
-          const currentVid = currentVideoData?.video_id;
+          const currentVideoData = player.getVideoData
+            ? player.getVideoData()
+            : null;
+          const currentVid = currentVideoData?.video_id || prevVid;
+          const videoChanged = currentVid !== normalized.videoId;
 
-          if (currentVid && currentVid !== remote.videoId) {
-            player.loadVideoById(remote.videoId, remote.pausedAtSeconds || 0);
-          }
+          if (normalized.isPlaying) {
+            const targetTime = Math.max(
+              0,
+              normalized.pausedAtSeconds +
+                (Date.now() - normalized.startedAtServerTime) / 1000
+            );
 
-          if (remote.isPlaying) {
-            const targetTime =
-              remote.pausedAtSeconds + (Date.now() - remote.startedAtServerTime) / 1000;
-            const currentPos = player.getCurrentTime ? player.getCurrentTime() : 0;
-            const drift = Math.abs(currentPos - targetTime);
-            const state = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
+            if (videoChanged) {
+              player.loadVideoById?.(normalized.videoId, targetTime);
+            } else {
+              const currentPos = player.getCurrentTime
+                ? player.getCurrentTime()
+                : 0;
+              const drift = Math.abs(currentPos - targetTime);
+              const state =
+                typeof player.getPlayerState === "function"
+                  ? player.getPlayerState()
+                  : -1;
 
-            // DISCORD JOCKIE ARCHITECTURE:
-            // Never seek while playing smoothly or buffering!
-            if (state !== 1 && state !== 3) {
-              player.seekTo?.(targetTime, true);
-            } else if (drift > 10 && state !== 3) {
-              player.seekTo?.(targetTime, true);
-            } else if (drift > 1.5 && drift <= 6) {
-              const rate = currentPos < targetTime ? 1.05 : 0.95;
-              player.setPlaybackRate?.(rate);
-              window.setTimeout(() => {
-                if (playerRef.current?.setPlaybackRate) {
-                  playerRef.current.setPlaybackRate(1.0);
-                }
-              }, 3000);
+              // DISCORD JOCKIE ARCHITECTURE:
+              // Never seek while playing smoothly or buffering!
+              if (state !== 1 && state !== 3) {
+                player.seekTo?.(targetTime, true);
+              } else if (drift > 10 && state !== 3) {
+                player.seekTo?.(targetTime, true);
+              } else if (drift > 1.5 && drift <= 6) {
+                const rate = currentPos < targetTime ? 1.05 : 0.95;
+                player.setPlaybackRate?.(rate);
+                window.setTimeout(() => {
+                  if (playerRef.current?.setPlaybackRate) {
+                    playerRef.current.setPlaybackRate(1.0);
+                  }
+                }, 3000);
+              }
             }
 
             const playPromise = player.playVideo?.();
@@ -360,15 +330,208 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               playPromise.catch(() => setNeedsUnlock(true));
             }
           } else {
-            player.pauseVideo?.();
-            player.seekTo?.(remote.pausedAtSeconds, true);
+            if (videoChanged) {
+              if (typeof player.cueVideoById === "function") {
+                player.cueVideoById(
+                  normalized.videoId,
+                  normalized.pausedAtSeconds || 0
+                );
+              } else {
+                player.loadVideoById?.(
+                  normalized.videoId,
+                  normalized.pausedAtSeconds || 0
+                );
+                player.pauseVideo?.();
+              }
+            } else {
+              player.pauseVideo?.();
+              player.seekTo?.(normalized.pausedAtSeconds || 0, true);
+            }
           }
         } catch {
           setNeedsUnlock(true);
         }
       },
-      [onRoomStateChange, pauseLocalBgm]
+      [onRoomStateChange, pauseLocalBgm, storageKey]
     );
+
+    useEffect(() => {
+      const channelName = `music-room:${profile.roomId}`;
+      const supabase = getSupabaseBrowserClient();
+
+      // Restore room-scoped saved state on mount BEFORE subscribing so handshake knows localUpdatedAt
+      try {
+        const savedScoped = window.localStorage.getItem(storageKey);
+        const savedLegacy = !savedScoped
+          ? window.localStorage.getItem(STORAGE_ROOM_KEY)
+          : null;
+        const raw = savedScoped || savedLegacy;
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.videoId) {
+            const hydrated: MusicRoomState = {
+              ...parsed,
+              updatedAt:
+                typeof parsed.updatedAt === "number"
+                  ? parsed.updatedAt
+                  : savedScoped
+                  ? 1
+                  : 0,
+              queue: Array.isArray(parsed.queue) ? parsed.queue : [],
+            };
+            roomStateRef.current = hydrated;
+            setRoomState(hydrated);
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      const replyIfLocalNewer = (peerUpdatedAt = 0) => {
+        const current = roomStateRef.current;
+        const myUpdatedAt = current.updatedAt ?? 0;
+        if (myUpdatedAt > 0 && myUpdatedAt >= peerUpdatedAt) {
+          channelRef.current?.send({
+            type: "broadcast",
+            event: "jockie-sync",
+            payload: current,
+          });
+          localBroadcastRef.current?.postMessage({
+            type: "jockie-sync",
+            payload: current,
+          });
+        }
+      };
+
+      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+        localBroadcastRef.current = new BroadcastChannel(channelName);
+        localBroadcastRef.current.onmessage = (event) => {
+          if (event.data?.type === "jockie-sync" && event.data.payload) {
+            handleRemoteStateUpdate(event.data.payload);
+          } else if (event.data?.type === "jockie-request-state") {
+            replyIfLocalNewer(event.data?.localUpdatedAt || 0);
+          }
+        };
+        localBroadcastRef.current.postMessage({
+          type: "jockie-request-state",
+          localUpdatedAt: roomStateRef.current.updatedAt || 0,
+        });
+      }
+
+      if (supabase) {
+        // Fetch persisted row if music_room_state table exists
+        Promise.resolve(
+          supabase
+            .from("music_room_state")
+            .select("*")
+            .eq("room_id", profile.roomId)
+            .maybeSingle()
+        )
+          .then(({ data: row }) => {
+            if (row && row.video_id) {
+              const rowTime = row.updated_at
+                ? new Date(row.updated_at).getTime()
+                : 1;
+              handleRemoteStateUpdate({
+                videoId: row.video_id,
+                url: row.url,
+                title: row.title,
+                isPlaying: row.is_playing,
+                startedAtServerTime: Number(row.started_at_server_time),
+                pausedAtSeconds: Number(row.paused_at_seconds),
+                updatedBy: row.updated_by,
+                updatedAt: isNaN(rowTime) ? 1 : rowTime,
+                queue: Array.isArray(row.queue) ? row.queue : [],
+              });
+            }
+          })
+          .catch(() => {});
+
+        const ch = supabase.channel(channelName, {
+          config: { broadcast: { self: false } },
+        });
+
+        ch.on("broadcast", { event: "jockie-sync" }, ({ payload }) => {
+          if (payload) {
+            handleRemoteStateUpdate(payload);
+          }
+        })
+          .on("broadcast", { event: "jockie-request-state" }, ({ payload }) => {
+            replyIfLocalNewer(payload?.localUpdatedAt || 0);
+          })
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "music_room_state",
+              filter: `room_id=eq.${profile.roomId}`,
+            },
+            (payload: any) => {
+              if (payload.new) {
+                const row = payload.new;
+                const rowTime = row.updated_at
+                  ? new Date(row.updated_at).getTime()
+                  : Date.now();
+                handleRemoteStateUpdate({
+                  videoId: row.video_id,
+                  url: row.url,
+                  title: row.title,
+                  isPlaying: row.is_playing,
+                  startedAtServerTime: Number(row.started_at_server_time),
+                  pausedAtSeconds: Number(row.paused_at_seconds),
+                  updatedBy: row.updated_by,
+                  updatedAt: isNaN(rowTime) ? Date.now() : rowTime,
+                  queue: Array.isArray(row.queue) ? row.queue : [],
+                });
+              }
+            }
+          )
+          .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              ch.send({
+                type: "broadcast",
+                event: "jockie-request-state",
+                payload: {
+                  requesterRole: profile.role,
+                  localUpdatedAt: roomStateRef.current.updatedAt || 0,
+                },
+              });
+              if ((roomStateRef.current.updatedAt || 0) > 0) {
+                ch.send({
+                  type: "broadcast",
+                  event: "jockie-sync",
+                  payload: roomStateRef.current,
+                });
+              }
+            }
+          });
+
+        channelRef.current = ch;
+      }
+
+      const handleFocusSync = () => {
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "jockie-request-state",
+          payload: {
+            requesterRole: profile.role,
+            localUpdatedAt: roomStateRef.current.updatedAt || 0,
+          },
+        });
+      };
+      window.addEventListener("focus", handleFocusSync);
+
+      return () => {
+        window.removeEventListener("focus", handleFocusSync);
+        if (channelRef.current) {
+          channelRef.current.unsubscribe();
+        }
+        if (localBroadcastRef.current) {
+          localBroadcastRef.current.close();
+        }
+      };
+    }, [profile.roomId, profile.role, storageKey, handleRemoteStateUpdate]);
 
     // ------------------------------------------------------------------------
     // 4. ON ENDED HANDLER (AUTO-PLAY NEXT IN QUEUE OR CLEAN RESET)
@@ -454,18 +617,30 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               setDuration(event.target.getDuration() || 0);
               setPlayerStatusText("Jockie Bot Terhubung 🎵");
 
+              const latest = roomStateRef.current;
               if (pendingPlayVideoIdRef.current) {
                 const vid = pendingPlayVideoIdRef.current;
                 pendingPlayVideoIdRef.current = null;
-                event.target.loadVideoById(vid);
-                event.target.playVideo();
+                if (latest.isPlaying) {
+                  const targetTime = Math.max(
+                    0,
+                    latest.pausedAtSeconds +
+                      (Date.now() - latest.startedAtServerTime) / 1000
+                  );
+                  event.target.loadVideoById(vid, targetTime);
+                  event.target.playVideo();
+                } else if (typeof event.target.cueVideoById === "function") {
+                  event.target.cueVideoById(vid, latest.pausedAtSeconds || 0);
+                }
                 return;
               }
 
-              if (roomState.isPlaying) {
-                const targetTime =
-                  roomState.pausedAtSeconds +
-                  (Date.now() - roomState.startedAtServerTime) / 1000;
+              if (latest.isPlaying) {
+                const targetTime = Math.max(
+                  0,
+                  latest.pausedAtSeconds +
+                    (Date.now() - latest.startedAtServerTime) / 1000
+                );
                 event.target.seekTo(targetTime, true);
                 event.target.playVideo();
               }
@@ -708,6 +883,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
 
           broadcastState({
             ...roomState,
+            updatedAt: Date.now(),
             updatedBy: `${senderName} (Forced Sync)`,
           });
 

@@ -19,6 +19,7 @@ import type {
   ChatTypingStatus,
   CoupleGamesState,
   CoupleProfile,
+  CoupleRoomMeta,
   DailyQnA,
   HeartbeatEvent,
   MusicSyncEvent,
@@ -32,13 +33,17 @@ import type {
   StrokeSegment,
   WebRTCSignalMessage,
 } from "@/lib/types";
-import type { SanrioCharacterId } from "@/lib/sanrioCharacters";
+import {
+  SANRIO_CHARACTER_MAP,
+  type SanrioCharacterId,
+} from "@/lib/sanrioCharacters";
 import { notifyPartnerWaiting } from "@/lib/notifications";
 
 export type NetworkConnectionStatus = "connected" | "reconnecting" | "offline";
 
 interface UseCoupleRealtimeOptions {
   profile: CoupleProfile;
+  onRemoteProfileMeta?: (meta: CoupleRoomMeta) => void;
   onHeartbeatReceived?: (event: HeartbeatEvent) => void;
   onRemoteStroke?: (segment: StrokeSegment) => void;
   onRemoteClearCanvas?: () => void;
@@ -49,6 +54,34 @@ interface UseCoupleRealtimeOptions {
   onMusicSyncReceived?: (event: MusicSyncEvent) => void;
 }
 
+interface SyncTimestampsMap {
+  gamesUpdatedAt: number;
+  notesUpdatedAt: number;
+  bucketUpdatedAt: number;
+  playlistUpdatedAt: number;
+  stampsClearedAt: number;
+}
+
+interface RoomSyncSnapshotPayload {
+  senderRole: PartnerRole;
+  coupleMeta?: CoupleRoomMeta;
+  anniversary?: { date: string; updatedAt: number };
+  heartbeatCount?: number;
+  senderMood?: PartnerMoodStatus;
+  todayQnA?: DailyQnA;
+  gamesState?: CoupleGamesState;
+  gamesUpdatedAt?: number;
+  stamps?: CanvasStamp[];
+  stampsClearedAt?: number;
+  sharedNotes?: SharedNote[];
+  notesUpdatedAt?: number;
+  bucketItems?: BucketItem[];
+  bucketUpdatedAt?: number;
+  sharedPlaylist?: SharedPlaylistItem[];
+  playlistUpdatedAt?: number;
+  recentChatMessages?: ChatMessage[];
+}
+
 const LOCAL_QNA_STORAGE_KEY = "cinnamelo_daily_qna_v2";
 const LOCAL_STAMPS_STORAGE_KEY = "cinnamelo_canvas_stamps_v2";
 const LOCAL_NOTES_STORAGE_KEY = "cinnamelo_shared_notes_v2";
@@ -57,6 +90,16 @@ const LOCAL_GAMES_STORAGE_KEY = "cinnamelo_couple_games_v2";
 const LOCAL_CHAT_STORAGE_KEY = "cinnamelo_chat_messages_v2";
 const LOCAL_MOOD_KEY = "cinnamelo_partner_mood_v2";
 const LOCAL_PLAYLIST_KEY = "cinnamelo_shared_playlist_v2";
+const LOCAL_META_STORAGE_KEY = "cinnamelo_couple_meta_v2";
+const LOCAL_ANNIVERSARY_KEY = "cinnamelo_anniversary_v2";
+const LEGACY_ANNIVERSARY_KEY = "cinnamelo_anniversary_date_v1";
+const LOCAL_HEARTBEAT_COUNT_KEY = "cinnamelo_heartbeat_count_v2";
+const LOCAL_SYNC_TS_KEY = "cinnamelo_sync_ts_v2";
+const DEFAULT_ANNIVERSARY_DATE = "2024-01-01";
+
+function isValidSanrioChar(val: unknown): val is SanrioCharacterId {
+  return typeof val === "string" && val in SANRIO_CHARACTER_MAP;
+}
 
 const SEED_PLAYLIST: SharedPlaylistItem[] = [
   {
@@ -103,6 +146,7 @@ const SEED_PLAYLIST: SharedPlaylistItem[] = [
 
 export function useCoupleRealtime({
   profile,
+  onRemoteProfileMeta,
   onHeartbeatReceived,
   onRemoteStroke,
   onRemoteClearCanvas,
@@ -116,6 +160,9 @@ export function useCoupleRealtime({
     () => `sess_${Math.random().toString(36).slice(2, 10)}`,
     []
   );
+
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
 
   const [connectionMode, setConnectionMode] = useState<
     "supabase" | "local-realtime"
@@ -134,11 +181,59 @@ export function useCoupleRealtime({
   onlineRolesRef.current = onlineRoles;
   const partnerLastSeenAtRef = useRef<number>(0);
   const partnerOfflineGraceTimerRef = useRef<number | null>(null);
+  const lastRoomSyncRequestAtRef = useRef<number>(0);
 
   const todayISO = useMemo(() => getTodayDateISO(), []);
   const todayQuestion = useMemo(
     () => getDailyPromptForDate(todayISO),
     [todayISO]
+  );
+
+  // Synced Couple Anniversary Date & Heartbeat Count
+  const [anniversaryDate, setAnniversaryDate] = useState<string>(
+    DEFAULT_ANNIVERSARY_DATE
+  );
+  const anniversaryRef = useRef<{ date: string; updatedAt: number }>({
+    date: DEFAULT_ANNIVERSARY_DATE,
+    updatedAt: 0,
+  });
+
+  const [heartbeatCount, setHeartbeatCount] = useState<number>(0);
+  const heartbeatCountRef = useRef<number>(0);
+  heartbeatCountRef.current = heartbeatCount;
+
+  const coupleMetaRef = useRef<CoupleRoomMeta>({
+    userAName: profile.userAName,
+    userBName: profile.userBName,
+    userACharacter: profile.userACharacter || "cinnamoroll",
+    userBCharacter: profile.userBCharacter || "my-melody",
+    updatedAt: 0,
+  });
+
+  const syncTimestampsRef = useRef<SyncTimestampsMap>({
+    gamesUpdatedAt: 0,
+    notesUpdatedAt: 0,
+    bucketUpdatedAt: 0,
+    playlistUpdatedAt: 0,
+    stampsClearedAt: 0,
+  });
+
+  const persistSyncTimestamps = useCallback(
+    (patch: Partial<SyncTimestampsMap>) => {
+      syncTimestampsRef.current = {
+        ...syncTimestampsRef.current,
+        ...patch,
+      };
+      try {
+        window.localStorage.setItem(
+          `${LOCAL_SYNC_TS_KEY}:${profileRef.current.roomId}`,
+          JSON.stringify(syncTimestampsRef.current)
+        );
+      } catch {
+        // ignore
+      }
+    },
+    []
   );
 
   const [todayQnA, setTodayQnA] = useState<DailyQnA>(() => ({
@@ -154,14 +249,22 @@ export function useCoupleRealtime({
     user_b_answered_at: null,
     is_unlocked: false,
   }));
+  const todayQnARef = useRef(todayQnA);
+  todayQnARef.current = todayQnA;
 
   // Canvas state
   const [stamps, setStamps] = useState<CanvasStamp[]>([]);
+  const stampsRef = useRef(stamps);
+  stampsRef.current = stamps;
   const [partnerCursor, setPartnerCursor] = useState<PartnerCursor | null>(null);
 
   // Shared Collaborative Journal & Bucket List state
   const [sharedNotes, setSharedNotes] = useState<SharedNote[]>([]);
+  const sharedNotesRef = useRef(sharedNotes);
+  sharedNotesRef.current = sharedNotes;
   const [bucketItems, setBucketItems] = useState<BucketItem[]>([]);
+  const bucketItemsRef = useRef(bucketItems);
+  bucketItemsRef.current = bucketItems;
   const [partnerTyping, setPartnerTyping] = useState<NoteTypingStatus | null>(
     null
   );
@@ -170,9 +273,13 @@ export function useCoupleRealtime({
   const [gamesState, setGamesState] = useState<CoupleGamesState>(() =>
     createInitialGamesState()
   );
+  const gamesStateRef = useRef(gamesState);
+  gamesStateRef.current = gamesState;
 
   // Couple Messenger & WebRTC Call state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const chatMessagesRef = useRef(chatMessages);
+  chatMessagesRef.current = chatMessages;
   const [chatTyping, setChatTyping] = useState<ChatTypingStatus | null>(null);
   const [activeIncomingCall, setActiveIncomingCall] =
     useState<WebRTCSignalMessage | null>(null);
@@ -189,8 +296,11 @@ export function useCoupleRealtime({
         : profile.userBCharacter) || "cinnamoroll",
     statusText: "Kangen ☁️",
     emoji: "☁️",
-    updatedAt: Date.now(),
+    updatedAt: 0,
   }));
+  const myMoodRef = useRef(myMood);
+  myMoodRef.current = myMood;
+
   const [musicSyncEvent, setMusicSyncEvent] = useState<MusicSyncEvent | null>(
     null
   );
@@ -209,10 +319,15 @@ export function useCoupleRealtime({
       return SEED_PLAYLIST;
     }
   );
+  const sharedPlaylistRef = useRef(sharedPlaylist);
+  sharedPlaylistRef.current = sharedPlaylist;
 
   const supabaseChannelRef = useRef<RealtimeChannel | null>(null);
   const localBroadcastRef = useRef<BroadcastChannel | null>(null);
   const seenEventIdsRef = useRef<Set<string>>(new Set());
+
+  const remoteProfileMetaCallbackRef = useRef(onRemoteProfileMeta);
+  remoteProfileMetaCallbackRef.current = onRemoteProfileMeta;
 
   const heartbeatCallbackRef = useRef(onHeartbeatReceived);
   heartbeatCallbackRef.current = onHeartbeatReceived;
@@ -238,6 +353,135 @@ export function useCoupleRealtime({
   const incomingCallCallbackRef = useRef(onIncomingCallSignal);
   incomingCallCallbackRef.current = onIncomingCallSignal;
 
+  // Keep myMood & partnerMood aligned with local device role and chosen Sanrio avatar
+  useEffect(() => {
+    const myChar: SanrioCharacterId =
+      (profile.role === "user_a"
+        ? profile.userACharacter
+        : profile.userBCharacter) ||
+      (profile.role === "user_a" ? "cinnamoroll" : "my-melody");
+    const otherRole: PartnerRole =
+      profile.role === "user_a" ? "user_b" : "user_a";
+
+    try {
+      const savedMyMood = window.localStorage.getItem(
+        `${LOCAL_MOOD_KEY}:${profile.roomId}:${profile.role}`
+      );
+      if (savedMyMood) {
+        const parsed = JSON.parse(savedMyMood) as PartnerMoodStatus;
+        const nextMyMood: PartnerMoodStatus = {
+          role: profile.role,
+          characterId: myChar,
+          statusText: parsed.statusText || "Kangen ☁️",
+          emoji: parsed.emoji || "☁️",
+          updatedAt: parsed.updatedAt || 0,
+        };
+        myMoodRef.current = nextMyMood;
+        setMyMood(nextMyMood);
+      } else {
+        const nextMyMood: PartnerMoodStatus = {
+          role: profile.role,
+          characterId: myChar,
+          statusText: "Kangen ☁️",
+          emoji: "☁️",
+          updatedAt: 0,
+        };
+        myMoodRef.current = nextMyMood;
+        setMyMood(nextMyMood);
+      }
+
+      const savedPartnerMood = window.localStorage.getItem(
+        `${LOCAL_MOOD_KEY}:${profile.roomId}:${otherRole}`
+      );
+      if (savedPartnerMood) {
+        const parsedP = JSON.parse(savedPartnerMood) as PartnerMoodStatus;
+        setPartnerMood({
+          ...parsedP,
+          role: otherRole,
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }, [
+    profile.roomId,
+    profile.role,
+    profile.userACharacter,
+    profile.userBCharacter,
+  ]);
+
+  // Keep coupleMetaRef synced when local profile loads saved customizations
+  useEffect(() => {
+    const uA = profile.userACharacter || "cinnamoroll";
+    const uB = profile.userBCharacter || "my-melody";
+    const isCustomized =
+      profile.userAName !== "Awan" ||
+      profile.userBName !== "Melodi" ||
+      uA !== "cinnamoroll" ||
+      uB !== "my-melody";
+
+    try {
+      const savedRoomMeta = window.localStorage.getItem(
+        `${LOCAL_META_STORAGE_KEY}:${profile.roomId}`
+      );
+      if (savedRoomMeta) {
+        const parsed = JSON.parse(savedRoomMeta) as CoupleRoomMeta;
+        if (parsed && typeof parsed.updatedAt === "number") {
+          coupleMetaRef.current = parsed;
+          if (
+            parsed.updatedAt > 0 &&
+            (parsed.userAName !== profile.userAName ||
+              parsed.userBName !== profile.userBName ||
+              parsed.userACharacter !== uA ||
+              parsed.userBCharacter !== uB)
+          ) {
+            remoteProfileMetaCallbackRef.current?.(parsed);
+          }
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    coupleMetaRef.current = {
+      userAName: profile.userAName,
+      userBName: profile.userBName,
+      userACharacter: uA,
+      userBCharacter: uB,
+      updatedAt:
+        coupleMetaRef.current.updatedAt > 0
+          ? coupleMetaRef.current.updatedAt
+          : isCustomized
+          ? 1
+          : 0,
+    };
+  }, [
+    profile.roomId,
+    profile.userAName,
+    profile.userBName,
+    profile.userACharacter,
+    profile.userBCharacter,
+  ]);
+
+  // Keep Supabase Presence metadata updated when nickname changes without tearing down channel
+  useEffect(() => {
+    if (!supabaseChannelRef.current) return;
+    const myName =
+      profile.role === "user_a" ? profile.userAName : profile.userBName;
+    supabaseChannelRef.current
+      .track({
+        role: profile.role,
+        name: myName,
+        online_at: new Date().toISOString(),
+        visibility:
+          typeof document !== "undefined"
+            ? document.visibilityState
+            : "visible",
+      })
+      .catch(() => {});
+  }, [profile.role, profile.userAName, profile.userBName]);
+
   const markSeen = useCallback((id: string): boolean => {
     if (seenEventIdsRef.current.has(id)) return true;
     seenEventIdsRef.current.add(id);
@@ -248,179 +492,233 @@ export function useCoupleRealtime({
     return false;
   }, []);
 
-  // Load initial data from Supabase (or localStorage fallback)
+  // Load initial data: ALWAYS hydrate from room-scoped localStorage first, then merge Supabase rows if available
   useEffect(() => {
     let cancelled = false;
     const supabase = getSupabaseBrowserClient();
 
     async function loadInitialData() {
-      // Load local games & stamps regardless so ephemeral playground feels continuous
+      const currentProfile = profileRef.current;
+
+      // 1. Instant Room-Scoped Local Hydration (protects against missing SQL tables on reload!)
       try {
+        const rawTs = window.localStorage.getItem(
+          `${LOCAL_SYNC_TS_KEY}:${profile.roomId}`
+        );
+        if (rawTs && !cancelled) {
+          syncTimestampsRef.current = {
+            ...syncTimestampsRef.current,
+            ...JSON.parse(rawTs),
+          };
+        }
+
+        const rawAnniv = window.localStorage.getItem(
+          `${LOCAL_ANNIVERSARY_KEY}:${profile.roomId}`
+        );
+        if (rawAnniv && !cancelled) {
+          const parsedAnniv = JSON.parse(rawAnniv) as {
+            date: string;
+            updatedAt: number;
+          };
+          if (parsedAnniv?.date) {
+            anniversaryRef.current = {
+              date: parsedAnniv.date,
+              updatedAt: parsedAnniv.updatedAt ?? 1,
+            };
+            setAnniversaryDate(parsedAnniv.date);
+          }
+        } else {
+          const legacyAnniv = window.localStorage.getItem(
+            LEGACY_ANNIVERSARY_KEY
+          );
+          if (legacyAnniv && !cancelled) {
+            anniversaryRef.current = {
+              date: legacyAnniv,
+              updatedAt: legacyAnniv !== DEFAULT_ANNIVERSARY_DATE ? 1 : 0,
+            };
+            setAnniversaryDate(legacyAnniv);
+          }
+        }
+
+        const rawHb = window.localStorage.getItem(
+          `${LOCAL_HEARTBEAT_COUNT_KEY}:${profile.roomId}:${todayISO}`
+        );
+        if (rawHb && !cancelled) {
+          const count = parseInt(rawHb, 10);
+          if (!isNaN(count) && count >= 0) {
+            heartbeatCountRef.current = count;
+            setHeartbeatCount(count);
+          }
+        }
+
         const rawGames = window.localStorage.getItem(
           `${LOCAL_GAMES_STORAGE_KEY}:${profile.roomId}`
         );
         if (rawGames && !cancelled) {
           setGamesState(JSON.parse(rawGames));
         }
+
         const rawStamps = window.localStorage.getItem(
           `${LOCAL_STAMPS_STORAGE_KEY}:${profile.roomId}`
         );
         if (rawStamps && !cancelled) {
           setStamps(JSON.parse(rawStamps));
         }
-      } catch {
-        // ignore
-      }
 
-      if (supabase) {
-        try {
-          const { data: qnaRow } = await supabase
-            .from("daily_qna")
-            .select("*")
-            .eq("room_id", profile.roomId)
-            .eq("prompt_date", todayISO)
-            .maybeSingle();
-
-          if (qnaRow && !cancelled) {
-            setTodayQnA(qnaRow as DailyQnA);
-          }
-
-          const { data: notesRows } = await supabase
-            .from("shared_notes")
-            .select("*")
-            .eq("room_id", profile.roomId)
-            .order("is_pinned", { ascending: false })
-            .order("updated_at", { ascending: false });
-
-          if (!cancelled) {
-            if (notesRows && notesRows.length > 0) {
-              setSharedNotes(notesRows as SharedNote[]);
-            } else {
-              setSharedNotes(
-                getSeedSharedNotes(
-                  profile.roomId,
-                  profile.userAName,
-                  profile.userBName
-                )
-              );
-            }
-          }
-
-          const { data: bucketRows } = await supabase
-            .from("bucket_list_items")
-            .select("*")
-            .eq("room_id", profile.roomId)
-            .order("created_at", { ascending: false });
-
-          if (!cancelled) {
-            if (bucketRows && bucketRows.length > 0) {
-              setBucketItems(bucketRows as BucketItem[]);
-            } else {
-              setBucketItems(
-                getSeedBucketItems(
-                  profile.roomId,
-                  profile.userAName,
-                  profile.userBName
-                )
-              );
-            }
-          }
-
-          // Load chat messages
-          const { data: chatRows } = await supabase
-            .from("chat_messages")
-            .select("*")
-            .eq("room_id", profile.roomId)
-            .order("created_at", { ascending: true })
-            .limit(250);
-
-          if (!cancelled) {
-            if (chatRows && chatRows.length > 0) {
-              setChatMessages(chatRows as ChatMessage[]);
-            } else {
-              const seeded = getSeedChatMessages(
-                profile.roomId,
-                profile.userAName,
-                profile.userBName
-              );
-              setChatMessages(seeded);
-            }
-          }
-
-          setConnectionMode("supabase");
-          return;
-        } catch {
-          // Fallback to local cross-tab realtime
+        const rawPlaylist = window.localStorage.getItem(
+          `${LOCAL_PLAYLIST_KEY}:${profile.roomId}`
+        );
+        if (rawPlaylist && !cancelled) {
+          setSharedPlaylist(JSON.parse(rawPlaylist));
         }
-      }
 
-      if (cancelled) return;
-      setConnectionMode("local-realtime");
-
-      try {
         const rawQnA = window.localStorage.getItem(
           `${LOCAL_QNA_STORAGE_KEY}:${profile.roomId}:${todayISO}`
         );
-        if (rawQnA) {
+        if (rawQnA && !cancelled) {
           setTodayQnA(JSON.parse(rawQnA));
         }
 
         const rawNotes = window.localStorage.getItem(
           `${LOCAL_NOTES_STORAGE_KEY}:${profile.roomId}`
         );
-        if (rawNotes) {
-          setSharedNotes(JSON.parse(rawNotes));
-        } else {
-          const seededNotes = getSeedSharedNotes(
-            profile.roomId,
-            profile.userAName,
-            profile.userBName
-          );
-          setSharedNotes(seededNotes);
-          window.localStorage.setItem(
-            `${LOCAL_NOTES_STORAGE_KEY}:${profile.roomId}`,
-            JSON.stringify(seededNotes)
-          );
+        if (!cancelled) {
+          if (rawNotes) {
+            setSharedNotes(JSON.parse(rawNotes));
+          } else {
+            const seededNotes = getSeedSharedNotes(
+              profile.roomId,
+              currentProfile.userAName,
+              currentProfile.userBName
+            );
+            setSharedNotes(seededNotes);
+          }
         }
 
         const rawBucket = window.localStorage.getItem(
           `${LOCAL_BUCKET_STORAGE_KEY}:${profile.roomId}`
         );
-        if (rawBucket) {
-          setBucketItems(JSON.parse(rawBucket));
-        } else {
-          const seededBucket = getSeedBucketItems(
-            profile.roomId,
-            profile.userAName,
-            profile.userBName
-          );
-          setBucketItems(seededBucket);
-          window.localStorage.setItem(
-            `${LOCAL_BUCKET_STORAGE_KEY}:${profile.roomId}`,
-            JSON.stringify(seededBucket)
-          );
+        if (!cancelled) {
+          if (rawBucket) {
+            setBucketItems(JSON.parse(rawBucket));
+          } else {
+            const seededBucket = getSeedBucketItems(
+              profile.roomId,
+              currentProfile.userAName,
+              currentProfile.userBName
+            );
+            setBucketItems(seededBucket);
+          }
         }
 
-        // Local chat messages
         const rawChat = window.localStorage.getItem(
           `${LOCAL_CHAT_STORAGE_KEY}:${profile.roomId}`
         );
-        if (rawChat) {
-          setChatMessages(JSON.parse(rawChat));
-        } else {
-          const seededChat = getSeedChatMessages(
-            profile.roomId,
-            profile.userAName,
-            profile.userBName
-          );
-          setChatMessages(seededChat);
-          window.localStorage.setItem(
-            `${LOCAL_CHAT_STORAGE_KEY}:${profile.roomId}`,
-            JSON.stringify(seededChat)
-          );
+        if (!cancelled) {
+          if (rawChat) {
+            setChatMessages(JSON.parse(rawChat));
+          } else {
+            const seededChat = getSeedChatMessages(
+              profile.roomId,
+              currentProfile.userAName,
+              currentProfile.userBName
+            );
+            setChatMessages(seededChat);
+          }
         }
       } catch {
         // ignore storage errors
+      }
+
+      // 2. Optional Supabase Database Merge (only overwrites when table exists & has rows!)
+      if (supabase) {
+        setConnectionMode("supabase");
+        try {
+          const { data: qnaRow, error: qnaErr } = await supabase
+            .from("daily_qna")
+            .select("*")
+            .eq("room_id", profile.roomId)
+            .eq("prompt_date", todayISO)
+            .maybeSingle();
+
+          if (!qnaErr && qnaRow && !cancelled) {
+            setTodayQnA(qnaRow as DailyQnA);
+            try {
+              window.localStorage.setItem(
+                `${LOCAL_QNA_STORAGE_KEY}:${profile.roomId}:${todayISO}`,
+                JSON.stringify(qnaRow)
+              );
+            } catch {}
+          }
+
+          const { data: notesRows, error: notesErr } = await supabase
+            .from("shared_notes")
+            .select("*")
+            .eq("room_id", profile.roomId)
+            .order("is_pinned", { ascending: false })
+            .order("updated_at", { ascending: false });
+
+          if (!notesErr && notesRows && notesRows.length > 0 && !cancelled) {
+            setSharedNotes(notesRows as SharedNote[]);
+            try {
+              window.localStorage.setItem(
+                `${LOCAL_NOTES_STORAGE_KEY}:${profile.roomId}`,
+                JSON.stringify(notesRows)
+              );
+            } catch {}
+          }
+
+          const { data: bucketRows, error: bucketErr } = await supabase
+            .from("bucket_list_items")
+            .select("*")
+            .eq("room_id", profile.roomId)
+            .order("created_at", { ascending: false });
+
+          if (!bucketErr && bucketRows && bucketRows.length > 0 && !cancelled) {
+            setBucketItems(bucketRows as BucketItem[]);
+            try {
+              window.localStorage.setItem(
+                `${LOCAL_BUCKET_STORAGE_KEY}:${profile.roomId}`,
+                JSON.stringify(bucketRows)
+              );
+            } catch {}
+          }
+
+          const { data: chatRows, error: chatErr } = await supabase
+            .from("chat_messages")
+            .select("*")
+            .eq("room_id", profile.roomId)
+            .order("created_at", { ascending: true })
+            .limit(250);
+
+          if (!chatErr && chatRows && chatRows.length > 0 && !cancelled) {
+            setChatMessages((prev) => {
+              const map = new Map(prev.map((m) => [m.id, m]));
+              for (const row of chatRows as ChatMessage[]) {
+                map.set(row.id, row);
+              }
+              const merged = Array.from(map.values()).sort(
+                (a, b) =>
+                  new Date(a.created_at).getTime() -
+                  new Date(b.created_at).getTime()
+              );
+              try {
+                window.localStorage.setItem(
+                  `${LOCAL_CHAT_STORAGE_KEY}:${profile.roomId}`,
+                  JSON.stringify(merged)
+                );
+              } catch {}
+              return merged;
+            });
+          }
+        } catch {
+          // Realtime Broadcast continues working even if SQL tables are unprovisioned
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setConnectionMode("local-realtime");
       }
     }
 
@@ -428,7 +726,7 @@ export function useCoupleRealtime({
     return () => {
       cancelled = true;
     };
-  }, [profile.roomId, profile.userAName, profile.userBName, todayISO]);
+  }, [profile.roomId, todayISO]);
 
   // Unified Multi-Channel Real-time Broadcaster (Supabase + Local BroadcastChannel + SSE Hub)
   const emitRealtime = useCallback(
@@ -498,9 +796,364 @@ export function useCoupleRealtime({
     });
   }, [partnerRole, profile.role]);
 
+  // ==========================================================================
+  // SHARED ROOM STATE RECONCILIATION HELPERS (LWW + MERGE ACROSS ALL TRANSPORTS)
+  // ==========================================================================
+  const applyIncomingCoupleMeta = useCallback(
+    (incoming?: CoupleRoomMeta | null) => {
+      if (!incoming || typeof incoming !== "object") return;
+      const incomingUpdatedAt = incoming.updatedAt ?? 0;
+      const localUpdatedAt = coupleMetaRef.current.updatedAt ?? 0;
+
+      // Never let an unedited default (updatedAt: 0) or older payload overwrite newer edits
+      if (incomingUpdatedAt <= 0) return;
+      if (localUpdatedAt > 0 && incomingUpdatedAt < localUpdatedAt) return;
+
+      const normalized: CoupleRoomMeta = {
+        userAName:
+          incoming.userAName?.trim() ||
+          coupleMetaRef.current.userAName ||
+          "Awan",
+        userBName:
+          incoming.userBName?.trim() ||
+          coupleMetaRef.current.userBName ||
+          "Melodi",
+        userACharacter: isValidSanrioChar(incoming.userACharacter)
+          ? incoming.userACharacter
+          : coupleMetaRef.current.userACharacter || "cinnamoroll",
+        userBCharacter: isValidSanrioChar(incoming.userBCharacter)
+          ? incoming.userBCharacter
+          : coupleMetaRef.current.userBCharacter || "my-melody",
+        updatedAt: incomingUpdatedAt,
+        updatedByRole: incoming.updatedByRole,
+      };
+
+      const changed =
+        normalized.userAName !== profileRef.current.userAName ||
+        normalized.userBName !== profileRef.current.userBName ||
+        normalized.userACharacter !== profileRef.current.userACharacter ||
+        normalized.userBCharacter !== profileRef.current.userBCharacter;
+
+      coupleMetaRef.current = normalized;
+      try {
+        window.localStorage.setItem(
+          `${LOCAL_META_STORAGE_KEY}:${profileRef.current.roomId}`,
+          JSON.stringify(normalized)
+        );
+      } catch {
+        // ignore
+      }
+
+      if (changed) {
+        remoteProfileMetaCallbackRef.current?.(normalized);
+      }
+    },
+    []
+  );
+
+  const applyIncomingAnniversary = useCallback(
+    (incoming?: { date: string; updatedAt: number } | null) => {
+      if (!incoming?.date) return;
+      const incomingUpdatedAt = incoming.updatedAt ?? 0;
+      const localUpdatedAt = anniversaryRef.current.updatedAt ?? 0;
+      if (incomingUpdatedAt <= 0) return;
+      if (localUpdatedAt > 0 && incomingUpdatedAt < localUpdatedAt) return;
+
+      anniversaryRef.current = {
+        date: incoming.date,
+        updatedAt: incomingUpdatedAt,
+      };
+      setAnniversaryDate(incoming.date);
+      try {
+        window.localStorage.setItem(
+          `${LOCAL_ANNIVERSARY_KEY}:${profileRef.current.roomId}`,
+          JSON.stringify(anniversaryRef.current)
+        );
+        window.localStorage.setItem(LEGACY_ANNIVERSARY_KEY, incoming.date);
+      } catch {
+        // ignore
+      }
+    },
+    []
+  );
+
+  const applyIncomingHeartbeatCount = useCallback(
+    (remoteCount?: number) => {
+      if (typeof remoteCount !== "number" || isNaN(remoteCount)) return;
+      if (remoteCount > heartbeatCountRef.current) {
+        heartbeatCountRef.current = remoteCount;
+        setHeartbeatCount(remoteCount);
+        try {
+          window.localStorage.setItem(
+            `${LOCAL_HEARTBEAT_COUNT_KEY}:${profileRef.current.roomId}:${todayISO}`,
+            String(remoteCount)
+          );
+        } catch {
+          // ignore
+        }
+      }
+    },
+    [todayISO]
+  );
+
+  const applyIncomingPartnerMood = useCallback(
+    (status?: PartnerMoodStatus | null) => {
+      if (!status || status.role === profileRef.current.role) return;
+      setPartnerMood((prev) => {
+        if (
+          prev &&
+          prev.updatedAt > 0 &&
+          status.updatedAt > 0 &&
+          status.updatedAt < prev.updatedAt
+        ) {
+          return prev;
+        }
+        if (
+          prev &&
+          prev.statusText === status.statusText &&
+          prev.characterId === status.characterId &&
+          prev.emoji === status.emoji
+        ) {
+          return prev;
+        }
+        try {
+          window.localStorage.setItem(
+            `${LOCAL_MOOD_KEY}:${profileRef.current.roomId}:${status.role}`,
+            JSON.stringify(status)
+          );
+        } catch {
+          // ignore
+        }
+        return status;
+      });
+    },
+    []
+  );
+
+  const buildPresencePayload = useCallback(() => {
+    const p = profileRef.current;
+    const myName = p.role === "user_a" ? p.userAName : p.userBName;
+    const visibility =
+      typeof document !== "undefined" ? document.visibilityState : "visible";
+    return {
+      role: p.role,
+      name: myName,
+      visibility,
+      timestamp: Date.now(),
+      sessionId,
+      mood: myMoodRef.current,
+      coupleMeta: coupleMetaRef.current,
+      anniversary: anniversaryRef.current,
+      heartbeatCount: heartbeatCountRef.current,
+    };
+  }, [sessionId]);
+
+  const buildRoomSyncSnapshot = useCallback((): RoomSyncSnapshotPayload => {
+    const compactChat = chatMessagesRef.current
+      .slice(-40)
+      .filter((m) => !m.media_url || m.media_url.length < 24000);
+
+    return {
+      senderRole: profileRef.current.role,
+      coupleMeta: coupleMetaRef.current,
+      anniversary: anniversaryRef.current,
+      heartbeatCount: heartbeatCountRef.current,
+      senderMood: myMoodRef.current,
+      todayQnA: todayQnARef.current,
+      gamesState: gamesStateRef.current,
+      gamesUpdatedAt: syncTimestampsRef.current.gamesUpdatedAt,
+      stamps: stampsRef.current.slice(-120),
+      stampsClearedAt: syncTimestampsRef.current.stampsClearedAt,
+      sharedNotes: sharedNotesRef.current,
+      notesUpdatedAt: syncTimestampsRef.current.notesUpdatedAt,
+      bucketItems: bucketItemsRef.current,
+      bucketUpdatedAt: syncTimestampsRef.current.bucketUpdatedAt,
+      sharedPlaylist: sharedPlaylistRef.current,
+      playlistUpdatedAt: syncTimestampsRef.current.playlistUpdatedAt,
+      recentChatMessages: compactChat,
+    };
+  }, []);
+
+  const applyRoomSyncSnapshot = useCallback(
+    (snap?: RoomSyncSnapshotPayload | null) => {
+      if (!snap || snap.senderRole === profileRef.current.role) return;
+
+      const roomId = profileRef.current.roomId;
+
+      applyIncomingCoupleMeta(snap.coupleMeta);
+      applyIncomingAnniversary(snap.anniversary);
+      applyIncomingHeartbeatCount(snap.heartbeatCount);
+      applyIncomingPartnerMood(snap.senderMood);
+
+      // Merge Daily QnA answers for today so neither partner's answer is lost
+      if (snap.todayQnA && snap.todayQnA.prompt_date === todayISO) {
+        setTodayQnA((prev) => {
+          const nextA = prev.user_a_answer || snap.todayQnA?.user_a_answer || null;
+          const nextB = prev.user_b_answer || snap.todayQnA?.user_b_answer || null;
+          if (
+            nextA === prev.user_a_answer &&
+            nextB === prev.user_b_answer &&
+            snap.todayQnA?.question === prev.question
+          ) {
+            return prev;
+          }
+          const merged: DailyQnA = {
+            ...prev,
+            question: snap.todayQnA?.question || prev.question,
+            user_a_answer: nextA,
+            user_b_answer: nextB,
+            user_a_answered_at:
+              prev.user_a_answered_at || snap.todayQnA?.user_a_answered_at || null,
+            user_b_answered_at:
+              prev.user_b_answered_at || snap.todayQnA?.user_b_answered_at || null,
+            is_unlocked: Boolean(nextA?.trim() && nextB?.trim()),
+          };
+          try {
+            window.localStorage.setItem(
+              `${LOCAL_QNA_STORAGE_KEY}:${roomId}:${todayISO}`,
+              JSON.stringify(merged)
+            );
+          } catch {}
+          return merged;
+        });
+      }
+
+      // Reconcile Playground Games State (LWW)
+      if (
+        snap.gamesState &&
+        (snap.gamesUpdatedAt ?? 0) > syncTimestampsRef.current.gamesUpdatedAt
+      ) {
+        persistSyncTimestamps({ gamesUpdatedAt: snap.gamesUpdatedAt });
+        setGamesState(snap.gamesState);
+        try {
+          window.localStorage.setItem(
+            `${LOCAL_GAMES_STORAGE_KEY}:${roomId}`,
+            JSON.stringify(snap.gamesState)
+          );
+        } catch {}
+      }
+
+      // Reconcile Canvas Stamps (respect clear timestamp + union by stamp.id)
+      if (Array.isArray(snap.stamps)) {
+        const remoteClear = snap.stampsClearedAt ?? 0;
+        const localClear = syncTimestampsRef.current.stampsClearedAt ?? 0;
+        const maxClear = Math.max(remoteClear, localClear);
+        if (remoteClear > localClear) {
+          persistSyncTimestamps({ stampsClearedAt: remoteClear });
+        }
+        setStamps((prev) => {
+          const map = new Map<string, CanvasStamp>();
+          for (const s of prev) {
+            if (s.createdAt >= maxClear) map.set(s.id, s);
+          }
+          for (const s of snap.stamps || []) {
+            if (s.createdAt >= maxClear) map.set(s.id, s);
+          }
+          const merged = Array.from(map.values()).sort(
+            (a, b) => a.createdAt - b.createdAt
+          );
+          if (merged.length === prev.length) return prev;
+          try {
+            window.localStorage.setItem(
+              `${LOCAL_STAMPS_STORAGE_KEY}:${roomId}`,
+              JSON.stringify(merged)
+            );
+          } catch {}
+          return merged;
+        });
+      }
+
+      // Reconcile Shared Notes (LWW when edited)
+      if (
+        Array.isArray(snap.sharedNotes) &&
+        (snap.notesUpdatedAt ?? 0) > syncTimestampsRef.current.notesUpdatedAt
+      ) {
+        persistSyncTimestamps({ notesUpdatedAt: snap.notesUpdatedAt });
+        setSharedNotes(snap.sharedNotes);
+        try {
+          window.localStorage.setItem(
+            `${LOCAL_NOTES_STORAGE_KEY}:${roomId}`,
+            JSON.stringify(snap.sharedNotes)
+          );
+        } catch {}
+      }
+
+      // Reconcile Bucket List (LWW when edited)
+      if (
+        Array.isArray(snap.bucketItems) &&
+        (snap.bucketUpdatedAt ?? 0) > syncTimestampsRef.current.bucketUpdatedAt
+      ) {
+        persistSyncTimestamps({ bucketUpdatedAt: snap.bucketUpdatedAt });
+        setBucketItems(snap.bucketItems);
+        try {
+          window.localStorage.setItem(
+            `${LOCAL_BUCKET_STORAGE_KEY}:${roomId}`,
+            JSON.stringify(snap.bucketItems)
+          );
+        } catch {}
+      }
+
+      // Reconcile Shared Playlist (LWW when edited)
+      if (
+        Array.isArray(snap.sharedPlaylist) &&
+        (snap.playlistUpdatedAt ?? 0) >
+          syncTimestampsRef.current.playlistUpdatedAt
+      ) {
+        persistSyncTimestamps({ playlistUpdatedAt: snap.playlistUpdatedAt });
+        setSharedPlaylist(snap.sharedPlaylist);
+        try {
+          window.localStorage.setItem(
+            `${LOCAL_PLAYLIST_KEY}:${roomId}`,
+            JSON.stringify(snap.sharedPlaylist)
+          );
+        } catch {}
+      }
+
+      // Merge Recent Chat Messages by ID
+      if (
+        Array.isArray(snap.recentChatMessages) &&
+        snap.recentChatMessages.length > 0
+      ) {
+        setChatMessages((prev) => {
+          const map = new Map(prev.map((m) => [m.id, m]));
+          let addedOrChanged = false;
+          for (const m of snap.recentChatMessages || []) {
+            if (!map.has(m.id)) {
+              map.set(m.id, m);
+              addedOrChanged = true;
+            }
+          }
+          if (!addedOrChanged) return prev;
+          const merged = Array.from(map.values()).sort(
+            (a, b) =>
+              new Date(a.created_at).getTime() -
+              new Date(b.created_at).getTime()
+          );
+          try {
+            window.localStorage.setItem(
+              `${LOCAL_CHAT_STORAGE_KEY}:${roomId}`,
+              JSON.stringify(merged)
+            );
+          } catch {}
+          return merged;
+        });
+      }
+    },
+    [
+      applyIncomingAnniversary,
+      applyIncomingCoupleMeta,
+      applyIncomingHeartbeatCount,
+      applyIncomingPartnerMood,
+      persistSyncTimestamps,
+      todayISO,
+    ]
+  );
+
   const syncPresenceNow = useCallback(() => {
     const myName =
-      profile.role === "user_a" ? profile.userAName : profile.userBName;
+      profileRef.current.role === "user_a"
+        ? profileRef.current.userAName
+        : profileRef.current.userBName;
     const visibility =
       typeof document !== "undefined" ? document.visibilityState : "visible";
 
@@ -523,37 +1176,24 @@ export function useCoupleRealtime({
         .catch(() => {});
     }
 
-    emitRealtime("presence-ping", {
-      role: profile.role,
-      name: myName,
-      visibility,
-      timestamp: Date.now(),
-      sessionId,
-    });
-  }, [
-    emitRealtime,
-    partnerRole,
-    profile.role,
-    profile.userAName,
-    profile.userBName,
-    sessionId,
-  ]);
+    emitRealtime("presence-ping", buildPresencePayload());
+
+    const now = Date.now();
+    if (now - lastRoomSyncRequestAtRef.current > 4000) {
+      lastRoomSyncRequestAtRef.current = now;
+      emitRealtime("room-sync-request", {
+        requesterRole: profile.role,
+        timestamp: now,
+      });
+    }
+  }, [buildPresencePayload, emitRealtime, partnerRole, profile.role]);
 
   const schedulePartnerOfflineGrace = useCallback(() => {
     if (!onlineRolesRef.current.has(partnerRole)) return;
     if (partnerOfflineGraceTimerRef.current) return;
 
     // Probe partner immediately before marking offline (anti-flicker on 4G/WiFi handoff)
-    const myName =
-      profile.role === "user_a" ? profile.userAName : profile.userBName;
-    emitRealtime("presence-ping", {
-      role: profile.role,
-      name: myName,
-      visibility:
-        typeof document !== "undefined" ? document.visibilityState : "visible",
-      timestamp: Date.now(),
-      sessionId,
-    });
+    emitRealtime("presence-ping", buildPresencePayload());
 
     // 9-second Grace Period before transitioning partner to offline
     partnerOfflineGraceTimerRef.current = window.setTimeout(() => {
@@ -563,14 +1203,7 @@ export function useCoupleRealtime({
         setOnlineRoles(new Set<PartnerRole>([profile.role]));
       }
     }, 9000);
-  }, [
-    emitRealtime,
-    partnerRole,
-    profile.role,
-    profile.userAName,
-    profile.userBName,
-    sessionId,
-  ]);
+  }, [buildPresencePayload, emitRealtime, partnerRole, profile.role]);
 
   // Lifecycle & Tab Focus Auto-Resync (visibilitychange, focus, online/offline)
   useEffect(() => {
@@ -610,8 +1243,6 @@ export function useCoupleRealtime({
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
     const channelName = profile.roomId || "couple-room";
-    const myName =
-      profile.role === "user_a" ? profile.userAName : profile.userBName;
 
     // Ensure current role is always in onlineRoles upon role switch
     setOnlineRoles((prev) => {
@@ -626,19 +1257,25 @@ export function useCoupleRealtime({
     });
 
     const replyPresencePong = () => {
-      emitRealtime("presence-pong", {
-        role: profile.role,
-        name: myName,
-        visibility:
-          typeof document !== "undefined"
-            ? document.visibilityState
-            : "visible",
-        timestamp: Date.now(),
-        sessionId,
-      });
+      emitRealtime("presence-pong", buildPresencePayload());
+    };
+
+    const handlePresencePayload = (p: any, shouldReplyPong: boolean) => {
+      if (!p || !p.role || p.role === profile.role) return;
+      markPartnerActive();
+      if (p.mood) applyIncomingPartnerMood(p.mood);
+      if (p.coupleMeta) applyIncomingCoupleMeta(p.coupleMeta);
+      if (p.anniversary) applyIncomingAnniversary(p.anniversary);
+      if (typeof p.heartbeatCount === "number") {
+        applyIncomingHeartbeatCount(p.heartbeatCount);
+      }
+      if (shouldReplyPong) {
+        replyPresencePong();
+      }
     };
 
     const applyIncomingNote = (note: SharedNote) => {
+      persistSyncTimestamps({ notesUpdatedAt: Date.now() });
       setSharedNotes((prev) => {
         const exists = prev.some((n) => n.id === note.id);
         const next = exists
@@ -657,6 +1294,7 @@ export function useCoupleRealtime({
     };
 
     const applyDeleteNote = (noteId: string) => {
+      persistSyncTimestamps({ notesUpdatedAt: Date.now() });
       setSharedNotes((prev) => {
         const next = prev.filter((n) => n.id !== noteId);
         try {
@@ -672,6 +1310,7 @@ export function useCoupleRealtime({
     };
 
     const applyIncomingBucketList = (items: BucketItem[]) => {
+      persistSyncTimestamps({ bucketUpdatedAt: Date.now() });
       setBucketItems(items);
       try {
         window.localStorage.setItem(
@@ -794,17 +1433,10 @@ export function useCoupleRealtime({
 
       channel
         .on("broadcast", { event: "presence-ping" }, ({ payload }) => {
-          const p = payload as { role?: PartnerRole; sessionId?: string };
-          if (p?.role && p.role !== profile.role) {
-            markPartnerActive();
-            replyPresencePong();
-          }
+          handlePresencePayload(payload, true);
         })
         .on("broadcast", { event: "presence-pong" }, ({ payload }) => {
-          const p = payload as { role?: PartnerRole; sessionId?: string };
-          if (p?.role && p.role !== profile.role) {
-            markPartnerActive();
-          }
+          handlePresencePayload(payload, false);
         })
         .on("broadcast", { event: "presence-leave" }, ({ payload }) => {
           const p = payload as { role?: PartnerRole };
@@ -812,16 +1444,55 @@ export function useCoupleRealtime({
             schedulePartnerOfflineGrace();
           }
         })
+        .on("broadcast", { event: "couple-meta-sync" }, ({ payload }) => {
+          markPartnerActive();
+          applyIncomingCoupleMeta(payload as CoupleRoomMeta);
+        })
+        .on("broadcast", { event: "anniversary-sync" }, ({ payload }) => {
+          markPartnerActive();
+          applyIncomingAnniversary(
+            payload as { date: string; updatedAt: number }
+          );
+        })
+        .on("broadcast", { event: "room-sync-request" }, ({ payload }) => {
+          const p = payload as { requesterRole?: PartnerRole };
+          if (!p?.requesterRole || p.requesterRole !== profile.role) {
+            markPartnerActive();
+            emitRealtime("room-sync-snapshot", buildRoomSyncSnapshot());
+          }
+        })
+        .on("broadcast", { event: "room-sync-snapshot" }, ({ payload }) => {
+          markPartnerActive();
+          applyRoomSyncSnapshot(payload as RoomSyncSnapshotPayload);
+        })
         .on("broadcast", { event: "heartbeat" }, ({ payload }) => {
-          const event = payload as HeartbeatEvent;
+          const event = payload as HeartbeatEvent & { heartbeatCount?: number };
           if (!event?.id || markSeen(event.id)) return;
           if (event.senderRole !== profile.role) markPartnerActive();
+          const nextCount = Math.max(
+            heartbeatCountRef.current + 1,
+            event.heartbeatCount || 0
+          );
+          heartbeatCountRef.current = nextCount;
+          setHeartbeatCount(nextCount);
+          try {
+            window.localStorage.setItem(
+              `${LOCAL_HEARTBEAT_COUNT_KEY}:${profile.roomId}:${todayISO}`,
+              String(nextCount)
+            );
+          } catch {}
           heartbeatCallbackRef.current?.(event);
         })
         .on("broadcast", { event: "qna-updated" }, ({ payload }) => {
           const updated = payload as DailyQnA;
           if (updated?.prompt_date === todayISO) {
             setTodayQnA(updated);
+            try {
+              window.localStorage.setItem(
+                `${LOCAL_QNA_STORAGE_KEY}:${profile.roomId}:${todayISO}`,
+                JSON.stringify(updated)
+              );
+            } catch {}
           }
         })
         .on("broadcast", { event: "canvas-stroke" }, ({ payload }) => {
@@ -834,12 +1505,27 @@ export function useCoupleRealtime({
           const stamp = payload as CanvasStamp;
           if (!stamp?.id || markSeen(stamp.id)) return;
           if (stamp.senderRole !== profile.role) markPartnerActive();
-          setStamps((prev) => [...prev, stamp]);
+          setStamps((prev) => {
+            const next = [...prev, stamp];
+            try {
+              window.localStorage.setItem(
+                `${LOCAL_STAMPS_STORAGE_KEY}:${profile.roomId}`,
+                JSON.stringify(next)
+              );
+            } catch {}
+            return next;
+          });
         })
         .on("broadcast", { event: "canvas-clear" }, ({ payload }) => {
           const clearId = (payload as { id?: string })?.id;
           if (clearId && markSeen(clearId)) return;
+          persistSyncTimestamps({ stampsClearedAt: Date.now() });
           setStamps([]);
+          try {
+            window.localStorage.removeItem(
+              `${LOCAL_STAMPS_STORAGE_KEY}:${profile.roomId}`
+            );
+          } catch {}
           clearCanvasCallbackRef.current?.();
         })
         .on("broadcast", { event: "canvas-cursor" }, ({ payload }) => {
@@ -877,7 +1563,14 @@ export function useCoupleRealtime({
             state: CoupleGamesState;
           };
           if (!msg?.eventId || markSeen(msg.eventId)) return;
+          persistSyncTimestamps({ gamesUpdatedAt: Date.now() });
           setGamesState(msg.state);
+          try {
+            window.localStorage.setItem(
+              `${LOCAL_GAMES_STORAGE_KEY}:${profile.roomId}`,
+              JSON.stringify(msg.state)
+            );
+          } catch {}
         })
         .on("broadcast", { event: "mini-doodle-stroke" }, ({ payload }) => {
           const seg = payload as StrokeSegment;
@@ -927,7 +1620,7 @@ export function useCoupleRealtime({
           const status = payload as PartnerMoodStatus;
           if (status && status.role !== profile.role) {
             markPartnerActive();
-            setPartnerMood(status);
+            applyIncomingPartnerMood(status);
           }
         })
         .on("broadcast", { event: "music-sync" }, ({ payload }) => {
@@ -941,6 +1634,7 @@ export function useCoupleRealtime({
         .on("broadcast", { event: "playlist-sync" }, ({ payload }) => {
           const p = payload as { items: SharedPlaylistItem[] };
           if (p?.items) {
+            persistSyncTimestamps({ playlistUpdatedAt: Date.now() });
             setSharedPlaylist(p.items);
             try {
               window.localStorage.setItem(
@@ -993,28 +1687,31 @@ export function useCoupleRealtime({
         .subscribe(async (status) => {
           if (status === "SUBSCRIBED") {
             setIsChannelReconnecting(false);
+            const curName =
+              profileRef.current.role === "user_a"
+                ? profileRef.current.userAName
+                : profileRef.current.userBName;
             await channel.track({
               role: profile.role,
-              name: myName,
+              name: curName,
               online_at: new Date().toISOString(),
               visibility:
                 typeof document !== "undefined"
                   ? document.visibilityState
                   : "visible",
             });
-            // Immediately emit broadcast presence-ping so partner detects us in milliseconds
+            // Immediately emit enriched presence-ping + full room-sync-request
             channel.send({
               type: "broadcast",
               event: "presence-ping",
+              payload: buildPresencePayload(),
+            });
+            channel.send({
+              type: "broadcast",
+              event: "room-sync-request",
               payload: {
-                role: profile.role,
-                name: myName,
-                visibility:
-                  typeof document !== "undefined"
-                    ? document.visibilityState
-                    : "visible",
+                requesterRole: profile.role,
                 timestamp: Date.now(),
-                sessionId,
               },
             });
           } else if (
@@ -1042,33 +1739,73 @@ export function useCoupleRealtime({
 
       switch (msg.type) {
         case "presence-ping": {
-          const p = msg.payload || msg;
-          if (p?.role && p.role !== profile.role) {
-            markPartnerActive();
-            replyPresencePong();
-          }
+          handlePresencePayload(msg.payload || msg, true);
           break;
         }
         case "presence-pong": {
-          const p = msg.payload || msg;
-          if (p?.role && p.role !== profile.role) {
-            markPartnerActive();
-          }
+          handlePresencePayload(msg.payload || msg, false);
           break;
         }
         case "presence-leave":
           schedulePartnerOfflineGrace();
           break;
+        case "couple-meta-sync": {
+          markPartnerActive();
+          applyIncomingCoupleMeta(msg.payload as CoupleRoomMeta);
+          break;
+        }
+        case "anniversary-sync": {
+          markPartnerActive();
+          applyIncomingAnniversary(
+            msg.payload as { date: string; updatedAt: number }
+          );
+          break;
+        }
+        case "room-sync-request": {
+          const p = (msg.payload || msg) as { requesterRole?: PartnerRole };
+          if (!p?.requesterRole || p.requesterRole !== profile.role) {
+            markPartnerActive();
+            emitRealtime("room-sync-snapshot", buildRoomSyncSnapshot());
+          }
+          break;
+        }
+        case "room-sync-snapshot": {
+          markPartnerActive();
+          applyRoomSyncSnapshot(msg.payload as RoomSyncSnapshotPayload);
+          break;
+        }
         case "heartbeat": {
-          const event = msg.payload as HeartbeatEvent;
+          const event = msg.payload as HeartbeatEvent & {
+            heartbeatCount?: number;
+          };
           if (!event?.id || markSeen(event.id)) return;
           if (event.senderRole !== profile.role) markPartnerActive();
+          const nextCount = Math.max(
+            heartbeatCountRef.current + 1,
+            event.heartbeatCount || 0
+          );
+          heartbeatCountRef.current = nextCount;
+          setHeartbeatCount(nextCount);
+          try {
+            window.localStorage.setItem(
+              `${LOCAL_HEARTBEAT_COUNT_KEY}:${profile.roomId}:${todayISO}`,
+              String(nextCount)
+            );
+          } catch {}
           heartbeatCallbackRef.current?.(event);
           break;
         }
         case "qna-updated": {
           const updated = msg.payload as DailyQnA;
-          if (updated?.prompt_date === todayISO) setTodayQnA(updated);
+          if (updated?.prompt_date === todayISO) {
+            setTodayQnA(updated);
+            try {
+              window.localStorage.setItem(
+                `${LOCAL_QNA_STORAGE_KEY}:${profile.roomId}:${todayISO}`,
+                JSON.stringify(updated)
+              );
+            } catch {}
+          }
           break;
         }
         case "canvas-stroke": {
@@ -1082,12 +1819,27 @@ export function useCoupleRealtime({
           const stamp = msg.payload as CanvasStamp;
           if (!stamp?.id || markSeen(stamp.id)) return;
           if (stamp.senderRole !== profile.role) markPartnerActive();
-          setStamps((prev) => [...prev, stamp]);
+          setStamps((prev) => {
+            const next = [...prev, stamp];
+            try {
+              window.localStorage.setItem(
+                `${LOCAL_STAMPS_STORAGE_KEY}:${profile.roomId}`,
+                JSON.stringify(next)
+              );
+            } catch {}
+            return next;
+          });
           break;
         }
         case "canvas-clear": {
           if (msg.id && markSeen(msg.id)) return;
+          persistSyncTimestamps({ stampsClearedAt: Date.now() });
           setStamps([]);
+          try {
+            window.localStorage.removeItem(
+              `${LOCAL_STAMPS_STORAGE_KEY}:${profile.roomId}`
+            );
+          } catch {}
           clearCanvasCallbackRef.current?.();
           break;
         }
@@ -1124,7 +1876,15 @@ export function useCoupleRealtime({
         }
         case "games-sync": {
           if (!msg.eventId || markSeen(msg.eventId)) return;
-          setGamesState((msg.state || msg.payload) as CoupleGamesState);
+          const nextG = (msg.state || msg.payload) as CoupleGamesState;
+          persistSyncTimestamps({ gamesUpdatedAt: Date.now() });
+          setGamesState(nextG);
+          try {
+            window.localStorage.setItem(
+              `${LOCAL_GAMES_STORAGE_KEY}:${profile.roomId}`,
+              JSON.stringify(nextG)
+            );
+          } catch {}
           break;
         }
         case "mini-doodle-stroke": {
@@ -1179,7 +1939,7 @@ export function useCoupleRealtime({
           const status = msg.payload as PartnerMoodStatus;
           if (status && status.role !== profile.role) {
             markPartnerActive();
-            setPartnerMood(status);
+            applyIncomingPartnerMood(status);
           }
           break;
         }
@@ -1196,6 +1956,7 @@ export function useCoupleRealtime({
           const items = (msg.payload?.items ||
             msg.payload) as SharedPlaylistItem[];
           if (Array.isArray(items)) {
+            persistSyncTimestamps({ playlistUpdatedAt: Date.now() });
             setSharedPlaylist(items);
             try {
               window.localStorage.setItem(
@@ -1271,6 +2032,33 @@ export function useCoupleRealtime({
               if (p && p[partnerRole]) {
                 markPartnerActive();
               }
+              if (data.payload.coupleMeta) {
+                applyIncomingCoupleMeta(data.payload.coupleMeta);
+              }
+              if (data.payload.anniversary) {
+                applyIncomingAnniversary(data.payload.anniversary);
+              }
+              if (typeof data.payload.heartbeatCount === "number") {
+                applyIncomingHeartbeatCount(data.payload.heartbeatCount);
+              }
+              if (data.payload.moods?.[partnerRole]) {
+                applyIncomingPartnerMood(data.payload.moods[partnerRole]);
+              }
+              if (data.payload.gamesState) {
+                setGamesState(data.payload.gamesState);
+              }
+              if (
+                Array.isArray(data.payload.bucketItems) &&
+                data.payload.bucketItems.length > 0
+              ) {
+                setBucketItems(data.payload.bucketItems);
+              }
+              if (
+                Array.isArray(data.payload.playlist) &&
+                data.payload.playlist.length > 0
+              ) {
+                setSharedPlaylist(data.payload.playlist);
+              }
               if (
                 Array.isArray(data.payload.recentMessages) &&
                 data.payload.recentMessages.length > 0
@@ -1328,29 +2116,17 @@ export function useCoupleRealtime({
       }
     }
 
-    // Immediate broadcast ping on room entry / role switch
-    emitRealtime("presence-ping", {
-      role: profile.role,
-      name: myName,
-      visibility:
-        typeof document !== "undefined" ? document.visibilityState : "visible",
+    // Immediate enriched broadcast ping + snapshot request on room entry / role switch
+    emitRealtime("presence-ping", buildPresencePayload());
+    emitRealtime("room-sync-request", {
+      requesterRole: profile.role,
       timestamp: Date.now(),
-      sessionId,
     });
 
     // Periodic Heartbeat Ping-Pong keepalive every 8s while active
     presenceHeartbeatTimer = window.setInterval(() => {
       if (typeof document === "undefined" || !document.hidden) {
-        emitRealtime("presence-ping", {
-          role: profile.role,
-          name: myName,
-          visibility:
-            typeof document !== "undefined"
-              ? document.visibilityState
-              : "visible",
-          timestamp: Date.now(),
-          sessionId,
-        });
+        emitRealtime("presence-ping", buildPresencePayload());
       }
     }, 8000);
 
@@ -1378,18 +2154,77 @@ export function useCoupleRealtime({
       }
     };
   }, [
+    applyIncomingAnniversary,
+    applyIncomingCoupleMeta,
+    applyIncomingHeartbeatCount,
+    applyIncomingPartnerMood,
+    applyRoomSyncSnapshot,
+    buildPresencePayload,
+    buildRoomSyncSnapshot,
     emitRealtime,
     markPartnerActive,
     markSeen,
     partnerRole,
+    persistSyncTimestamps,
     profile.role,
     profile.roomId,
-    profile.userAName,
-    profile.userBName,
     schedulePartnerOfflineGrace,
     sessionId,
     todayISO,
   ]);
+
+  // --------------------------------------------------------------------------
+  // SHARED COUPLE METADATA & ANNIVERSARY SYNC ACTIONS
+  // --------------------------------------------------------------------------
+  const broadcastProfileMeta = useCallback(
+    (nextProfile: CoupleProfile) => {
+      const meta: CoupleRoomMeta = {
+        userAName: nextProfile.userAName?.trim() || "Awan",
+        userBName: nextProfile.userBName?.trim() || "Melodi",
+        userACharacter: nextProfile.userACharacter || "cinnamoroll",
+        userBCharacter: nextProfile.userBCharacter || "my-melody",
+        updatedAt: Date.now(),
+        updatedByRole: nextProfile.role,
+      };
+      coupleMetaRef.current = meta;
+      try {
+        window.localStorage.setItem(
+          `${LOCAL_META_STORAGE_KEY}:${nextProfile.roomId}`,
+          JSON.stringify(meta)
+        );
+      } catch {
+        // ignore
+      }
+      if (nextProfile.roomId === profileRef.current.roomId) {
+        emitRealtime("couple-meta-sync", meta);
+      }
+    },
+    [emitRealtime]
+  );
+
+  const updateAnniversaryDate = useCallback(
+    (nextDate: string) => {
+      const trimmed = nextDate.trim();
+      if (!trimmed) return;
+      const record = {
+        date: trimmed,
+        updatedAt: Date.now(),
+      };
+      anniversaryRef.current = record;
+      setAnniversaryDate(trimmed);
+      try {
+        window.localStorage.setItem(
+          `${LOCAL_ANNIVERSARY_KEY}:${profile.roomId}`,
+          JSON.stringify(record)
+        );
+        window.localStorage.setItem(LEGACY_ANNIVERSARY_KEY, trimmed);
+      } catch {
+        // ignore
+      }
+      emitRealtime("anniversary-sync", record);
+    },
+    [emitRealtime, profile.roomId]
+  );
 
   // --------------------------------------------------------------------------
   // HOME ACTIONS (Heartbeat & Daily Secret Envelope)
@@ -1397,17 +2232,36 @@ export function useCoupleRealtime({
   const sendHeartbeat = useCallback(async () => {
     const senderName =
       profile.role === "user_a" ? profile.userAName : profile.userBName;
-    const event: HeartbeatEvent = {
+    const nextCount = heartbeatCountRef.current + 1;
+    heartbeatCountRef.current = nextCount;
+    setHeartbeatCount(nextCount);
+    try {
+      window.localStorage.setItem(
+        `${LOCAL_HEARTBEAT_COUNT_KEY}:${profile.roomId}:${todayISO}`,
+        String(nextCount)
+      );
+    } catch {}
+
+    const event: HeartbeatEvent & { heartbeatCount?: number } = {
       id: `hb_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       senderRole: profile.role,
       senderName,
       timestamp: Date.now(),
+      heartbeatCount: nextCount,
     };
     markSeen(event.id);
     heartbeatCallbackRef.current?.(event);
 
     emitRealtime("heartbeat", event);
-  }, [emitRealtime, markSeen, profile.role, profile.userAName, profile.userBName]);
+  }, [
+    emitRealtime,
+    markSeen,
+    profile.role,
+    profile.roomId,
+    profile.userAName,
+    profile.userBName,
+    todayISO,
+  ]);
 
   const submitDailyAnswer = useCallback(
     async (answerText: string, overrideRole?: PartnerRole) => {
@@ -1539,6 +2393,7 @@ export function useCoupleRealtime({
   const clearSharedCanvas = useCallback(() => {
     const clearId = `clr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     markSeen(clearId);
+    persistSyncTimestamps({ stampsClearedAt: Date.now() });
     setStamps([]);
     try {
       window.localStorage.removeItem(
@@ -1548,7 +2403,7 @@ export function useCoupleRealtime({
       // ignore
     }
     emitRealtime("canvas-clear", { id: clearId }, { id: clearId });
-  }, [emitRealtime, markSeen, profile.roomId]);
+  }, [emitRealtime, markSeen, persistSyncTimestamps, profile.roomId]);
 
   const broadcastCursor = useCallback(
     (x: number, y: number, color: string) => {
@@ -1573,6 +2428,7 @@ export function useCoupleRealtime({
     async (note: SharedNote) => {
       const eventId = `nt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       markSeen(eventId);
+      persistSyncTimestamps({ notesUpdatedAt: Date.now() });
 
       setSharedNotes((prev) => {
         const exists = prev.some((n) => n.id === note.id);
@@ -1597,7 +2453,7 @@ export function useCoupleRealtime({
 
       emitRealtime("note-upsert", { eventId, note }, { eventId, note });
     },
-    [emitRealtime, markSeen, profile.roomId]
+    [emitRealtime, markSeen, persistSyncTimestamps, profile.roomId]
   );
 
   const createSharedNote = useCallback(
@@ -1649,6 +2505,7 @@ export function useCoupleRealtime({
     async (noteId: string) => {
       const eventId = `del_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       markSeen(eventId);
+      persistSyncTimestamps({ notesUpdatedAt: Date.now() });
 
       setSharedNotes((prev) => {
         const next = prev.filter((n) => n.id !== noteId);
@@ -1670,7 +2527,7 @@ export function useCoupleRealtime({
 
       emitRealtime("note-delete", { eventId, noteId }, { eventId, noteId });
     },
-    [emitRealtime, markSeen, profile.roomId]
+    [emitRealtime, markSeen, persistSyncTimestamps, profile.roomId]
   );
 
   // --------------------------------------------------------------------------
@@ -1680,6 +2537,7 @@ export function useCoupleRealtime({
     async (items: BucketItem[]) => {
       const eventId = `bkt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       markSeen(eventId);
+      persistSyncTimestamps({ bucketUpdatedAt: Date.now() });
       setBucketItems(items);
       try {
         window.localStorage.setItem(
@@ -1692,7 +2550,7 @@ export function useCoupleRealtime({
 
       emitRealtime("bucket-sync", { eventId, items }, { eventId, items });
     },
-    [emitRealtime, markSeen, profile.roomId]
+    [emitRealtime, markSeen, persistSyncTimestamps, profile.roomId]
   );
 
   const addBucketItem = useCallback(
@@ -1772,6 +2630,7 @@ export function useCoupleRealtime({
         const next = updater(prev);
         const eventId = `gm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         markSeen(eventId);
+        persistSyncTimestamps({ gamesUpdatedAt: Date.now() });
         try {
           window.localStorage.setItem(
             `${LOCAL_GAMES_STORAGE_KEY}:${profile.roomId}`,
@@ -1789,7 +2648,7 @@ export function useCoupleRealtime({
         return next;
       });
     },
-    [emitRealtime, markSeen, profile.roomId]
+    [emitRealtime, markSeen, persistSyncTimestamps, profile.roomId]
   );
 
   const broadcastMiniDoodleStroke = useCallback(
@@ -2025,11 +2884,26 @@ export function useCoupleRealtime({
         emoji: input.emoji,
         updatedAt: Date.now(),
       };
+      myMoodRef.current = newMood;
       setMyMood(newMood);
+      try {
+        window.localStorage.setItem(
+          `${LOCAL_MOOD_KEY}:${profile.roomId}:${profile.role}`,
+          JSON.stringify(newMood)
+        );
+      } catch {
+        // ignore
+      }
 
       emitRealtime("partner-mood", newMood);
     },
-    [emitRealtime, profile.role, profile.userACharacter, profile.userBCharacter]
+    [
+      emitRealtime,
+      profile.role,
+      profile.roomId,
+      profile.userACharacter,
+      profile.userBCharacter,
+    ]
   );
 
   const broadcastMusicSync = useCallback(
@@ -2073,6 +2947,7 @@ export function useCoupleRealtime({
         created_at: new Date().toISOString(),
       };
 
+      persistSyncTimestamps({ playlistUpdatedAt: Date.now() });
       setSharedPlaylist((prev) => {
         const next = [...prev, newItem];
         try {
@@ -2083,16 +2958,23 @@ export function useCoupleRealtime({
         } catch {
           // ignore
         }
+        emitRealtime("playlist-sync", { items: next });
         return next;
       });
-
-      emitRealtime("playlist-sync", { items: [...sharedPlaylist, newItem] });
     },
-    [emitRealtime, profile.role, profile.roomId, profile.userAName, profile.userBName, sharedPlaylist]
+    [
+      emitRealtime,
+      persistSyncTimestamps,
+      profile.role,
+      profile.roomId,
+      profile.userAName,
+      profile.userBName,
+    ]
   );
 
   const removeFromPlaylist = useCallback(
     (trackId: string) => {
+      persistSyncTimestamps({ playlistUpdatedAt: Date.now() });
       setSharedPlaylist((prev) => {
         const next = prev.filter((t) => t.id !== trackId);
         try {
@@ -2107,7 +2989,7 @@ export function useCoupleRealtime({
         return next;
       });
     },
-    [emitRealtime, profile.roomId]
+    [emitRealtime, persistSyncTimestamps, profile.roomId]
   );
 
   const unreadChatCount = useMemo(() => {
@@ -2145,6 +3027,10 @@ export function useCoupleRealtime({
     simulatePartnerOnline,
     setSimulatePartnerOnline,
     sendPartnerWaitingPing,
+    anniversaryDate,
+    updateAnniversaryDate,
+    heartbeatCount,
+    broadcastProfileMeta,
     todayQnA,
     stamps,
     partnerCursor,

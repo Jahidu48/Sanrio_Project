@@ -13,6 +13,15 @@ export interface CoupleProfile {
   userBCharacter?: SanrioCharacterId;
 }
 
+export interface CoupleRoomMeta {
+  userAName: string;
+  userBName: string;
+  userACharacter: SanrioCharacterId;
+  userBCharacter: SanrioCharacterId;
+  updatedAt: number;
+  updatedByRole?: PartnerRole;
+}
+
 export interface DailyQnA {
   id: string;
   room_id: string;
@@ -198,6 +207,7 @@ export interface MusicRoomState {
   startedAtServerTime: number;
   pausedAtSeconds: number;
   updatedBy: string;
+  updatedAt?: number;
   queue?: MusicQueueItem[];
 }
 
@@ -326,6 +336,7 @@ export interface TruthDareState {
 
 export interface CoupleGamesState {
   activeGame: ActiveGameId;
+  activeSubTab?: "canvas" | ActiveGameId;
   telepathy: TelepathyState;
   tictac: TicTacState;
   doodle: DoodleGameState;

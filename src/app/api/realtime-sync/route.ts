@@ -34,6 +34,13 @@ interface RoomData {
   qna: any;
   notes: any[];
   stamps: any[];
+  coupleMeta: any;
+  anniversary: any;
+  heartbeatCount: number;
+  moods: Record<string, any>;
+  gamesState: any;
+  bucketItems: any[];
+  playlist: any[];
 }
 
 // Global in-memory storage persisted across hot-reloads and requests
@@ -51,6 +58,13 @@ function getOrCreateRoom(roomId: string): RoomData {
       qna: null,
       notes: [],
       stamps: [],
+      coupleMeta: null,
+      anniversary: null,
+      heartbeatCount: 0,
+      moods: {},
+      gamesState: null,
+      bucketItems: [],
+      playlist: [],
     };
     globalRooms.set(roomId, room);
   }
@@ -147,6 +161,13 @@ export async function GET(request: NextRequest) {
           recentMessages: room.recentMessages,
           qna: room.qna,
           notes: room.notes,
+          coupleMeta: room.coupleMeta,
+          anniversary: room.anniversary,
+          heartbeatCount: room.heartbeatCount,
+          moods: room.moods,
+          gamesState: room.gamesState,
+          bucketItems: room.bucketItems,
+          playlist: room.playlist,
         },
       };
       controller.enqueue(
@@ -222,9 +243,39 @@ export async function POST(request: NextRequest) {
     if (event === "chat-message" && payload) {
       room.recentMessages = [...room.recentMessages.slice(-49), payload];
     } else if (event === "jockie-sync" && payload) {
-      room.musicState = payload;
+      if (
+        !room.musicState?.updatedAt ||
+        !payload.updatedAt ||
+        payload.updatedAt >= room.musicState.updatedAt
+      ) {
+        room.musicState = payload;
+      }
     } else if (event === "qna-updated" && payload) {
       room.qna = payload;
+    } else if (event === "couple-meta-sync" && payload) {
+      if (
+        !room.coupleMeta?.updatedAt ||
+        (payload.updatedAt && payload.updatedAt >= room.coupleMeta.updatedAt)
+      ) {
+        room.coupleMeta = payload;
+      }
+    } else if (event === "anniversary-sync" && payload) {
+      if (
+        !room.anniversary?.updatedAt ||
+        (payload.updatedAt && payload.updatedAt >= room.anniversary.updatedAt)
+      ) {
+        room.anniversary = payload;
+      }
+    } else if (event === "heartbeat") {
+      room.heartbeatCount = (room.heartbeatCount || 0) + 1;
+    } else if (event === "partner-mood" && payload?.role) {
+      room.moods[payload.role] = payload;
+    } else if (event === "games-sync" && (rest.state || payload?.state)) {
+      room.gamesState = rest.state || payload.state;
+    } else if (event === "bucket-sync" && (rest.items || payload?.items)) {
+      room.bucketItems = rest.items || payload.items;
+    } else if (event === "playlist-sync" && payload?.items) {
+      room.playlist = payload.items;
     } else if (event === "note-upsert" && (rest.note || payload)) {
       const targetNote = rest.note || payload;
       const idx = room.notes.findIndex((n) => n.id === targetNote.id);

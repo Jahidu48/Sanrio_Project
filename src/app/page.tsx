@@ -39,6 +39,7 @@ import {
   notifyMoodChange,
   notifyPartnerOnline,
   notifyPartnerWaiting,
+  notifyProfileCharacterChange,
 } from "@/lib/notifications";
 import {
   getSanrioCharacter,
@@ -48,6 +49,7 @@ import {
 import type {
   AppTab,
   CoupleProfile,
+  CoupleRoomMeta,
   HeartbeatEvent,
   PartnerRole,
   WebRTCCallType,
@@ -99,7 +101,6 @@ export default function CoupleSpaceDashboard() {
   const [ripples, setRipples] = useState<RippleWave[]>([]);
   const [activeToast, setActiveToast] = useState<HeartbeatEvent | null>(null);
   const [characterBurstKey, setCharacterBurstKey] = useState(0);
-  const [heartbeatCount, setHeartbeatCount] = useState(0);
 
   const toastTimerRef = useRef<number | null>(null);
   const canvasRefHandle = useRef<CoopCanvasHandle | null>(null);
@@ -182,30 +183,79 @@ export default function CoupleSpaceDashboard() {
     };
   }, []);
 
-  const handleUpdateProfile = (next: CoupleProfile) => {
-    setProfile(next);
-    try {
-      window.localStorage.setItem(DEVICE_ROLE_KEY, next.role);
-      window.sessionStorage.setItem(SESSION_ROLE_KEY, next.role);
-      window.localStorage.setItem(
-        PROFILE_META_KEY,
-        JSON.stringify({
-          userAName: next.userAName,
-          userBName: next.userBName,
-          roomId: next.roomId,
-          userACharacter: next.userACharacter,
-          userBCharacter: next.userBCharacter,
-        })
+  // Apply incoming CoupleRoomMeta from partner device WITHOUT overwriting local device role!
+  const handleRemoteProfileMeta = useCallback((remoteMeta: CoupleRoomMeta) => {
+    setProfile((prev) => {
+      const nextAName = remoteMeta.userAName || prev.userAName;
+      const nextBName = remoteMeta.userBName || prev.userBName;
+      const nextAChar = toValidCharacter(
+        remoteMeta.userACharacter,
+        prev.userACharacter || "cinnamoroll"
       );
-    } catch {
-      // ignore storage errors
-    }
-  };
+      const nextBChar = toValidCharacter(
+        remoteMeta.userBCharacter,
+        prev.userBCharacter || "my-melody"
+      );
 
-  const handleSelectFirstTimeRole = (role: PartnerRole) => {
-    setShowFirstTimeModal(false);
-    handleUpdateProfile({ ...profile, role });
-  };
+      if (
+        nextAName === prev.userAName &&
+        nextBName === prev.userBName &&
+        nextAChar === prev.userACharacter &&
+        nextBChar === prev.userBCharacter
+      ) {
+        return prev;
+      }
+
+      // Notify if partner updated their Sanrio character live
+      if (
+        remoteMeta.updatedByRole &&
+        remoteMeta.updatedByRole !== prev.role &&
+        remoteMeta.updatedAt > 1000
+      ) {
+        const prevPartnerChar =
+          prev.role === "user_a" ? prev.userBCharacter : prev.userACharacter;
+        const nextPartnerChar =
+          prev.role === "user_a" ? nextBChar : nextAChar;
+        const nextPartnerName =
+          prev.role === "user_a" ? nextBName : nextAName;
+
+        if (prevPartnerChar !== nextPartnerChar) {
+          const charMeta = getSanrioCharacter(nextPartnerChar, "my-melody");
+          notifyProfileCharacterChange(
+            nextPartnerName,
+            charMeta.name,
+            charMeta.svgPath
+          );
+        }
+      }
+
+      try {
+        window.localStorage.setItem(
+          PROFILE_META_KEY,
+          JSON.stringify({
+            userAName: nextAName,
+            userBName: nextBName,
+            roomId: prev.roomId,
+            userACharacter: nextAChar,
+            userBCharacter: nextBChar,
+          })
+        );
+      } catch {
+        // ignore
+      }
+
+      return {
+        ...prev,
+        // STRICTLY preserve local per-device role & roomId
+        role: prev.role,
+        roomId: prev.roomId,
+        userAName: nextAName,
+        userBName: nextBName,
+        userACharacter: nextAChar,
+        userBCharacter: nextBChar,
+      };
+    });
+  }, []);
 
   // Triggered on BOTH User A and User B's screens when Heartbeat Orb is tapped
   const handleHeartbeatReceived = useCallback(
@@ -216,7 +266,6 @@ export default function CoupleSpaceDashboard() {
         { id: waveId, createdAt: Date.now() },
       ]);
       setCharacterBurstKey((prev) => prev + 1);
-      setHeartbeatCount((prev) => prev + 1);
       setActiveToast(event);
 
       if (event.senderRole !== profile.role) {
@@ -255,6 +304,10 @@ export default function CoupleSpaceDashboard() {
     simulatePartnerOnline,
     setSimulatePartnerOnline,
     sendPartnerWaitingPing,
+    anniversaryDate,
+    updateAnniversaryDate,
+    heartbeatCount,
+    broadcastProfileMeta,
     todayQnA,
     stamps,
     partnerCursor,
@@ -299,6 +352,7 @@ export default function CoupleSpaceDashboard() {
     dismissIncomingCall,
   } = useCoupleRealtime({
     profile,
+    onRemoteProfileMeta: handleRemoteProfileMeta,
     onHeartbeatReceived: handleHeartbeatReceived,
     onRemoteStroke: (segment) => {
       canvasRefHandle.current?.drawRemoteSegment(segment);
@@ -326,6 +380,44 @@ export default function CoupleSpaceDashboard() {
       notifyChatMessage(msg.sender_name, textPreview);
     },
   });
+
+  const handleUpdateProfile = useCallback(
+    (next: CoupleProfile) => {
+      const sharedMetaChanged =
+        next.userAName !== profile.userAName ||
+        next.userBName !== profile.userBName ||
+        next.userACharacter !== profile.userACharacter ||
+        next.userBCharacter !== profile.userBCharacter;
+
+      setProfile(next);
+      try {
+        window.localStorage.setItem(DEVICE_ROLE_KEY, next.role);
+        window.sessionStorage.setItem(SESSION_ROLE_KEY, next.role);
+        window.localStorage.setItem(
+          PROFILE_META_KEY,
+          JSON.stringify({
+            userAName: next.userAName,
+            userBName: next.userBName,
+            roomId: next.roomId,
+            userACharacter: next.userACharacter,
+            userBCharacter: next.userBCharacter,
+          })
+        );
+      } catch {
+        // ignore storage errors
+      }
+
+      if (sharedMetaChanged) {
+        broadcastProfileMeta(next);
+      }
+    },
+    [broadcastProfileMeta, profile]
+  );
+
+  const handleSelectFirstTimeRole = (role: PartnerRole) => {
+    setShowFirstTimeModal(false);
+    handleUpdateProfile({ ...profile, role });
+  };
 
   // Trigger canvas measurement refresh when switching into Canvas or Play tab
   useEffect(() => {
@@ -385,22 +477,33 @@ export default function CoupleSpaceDashboard() {
     }
   }, [activeIncomingCall]);
 
-  // Partner Mood Change Notification Watcher
-  const lastPartnerMoodTimestampRef = useRef<number | null>(null);
+  // Partner Mood Change Notification Watcher (only fires on genuine mood updates, not initial sync)
+  const lastPartnerMoodTextRef = useRef<string | null>(null);
   useEffect(() => {
     if (!partnerMood) return;
     if (
-      lastPartnerMoodTimestampRef.current !== null &&
-      partnerMood.updatedAt !== lastPartnerMoodTimestampRef.current
+      lastPartnerMoodTextRef.current !== null &&
+      partnerMood.updatedAt > 0 &&
+      partnerMood.statusText !== lastPartnerMoodTextRef.current
     ) {
+      const partnerCharId =
+        profile.role === "user_a"
+          ? profile.userBCharacter
+          : profile.userACharacter;
       const charMeta = getSanrioCharacter(
-        partnerMood.characterId,
+        partnerCharId || partnerMood.characterId,
         "my-melody"
       );
       notifyMoodChange(partnerName, partnerMood.statusText, charMeta.svgPath);
     }
-    lastPartnerMoodTimestampRef.current = partnerMood.updatedAt;
-  }, [partnerMood, partnerName]);
+    lastPartnerMoodTextRef.current = partnerMood.statusText;
+  }, [
+    partnerMood,
+    partnerName,
+    profile.role,
+    profile.userACharacter,
+    profile.userBCharacter,
+  ]);
 
   const myAnswerMissing =
     profile.role === "user_a"
@@ -543,7 +646,11 @@ export default function CoupleSpaceDashboard() {
                     />
                   </div>
 
-                  <CoupleAnniversaryWidget profile={profile} />
+                  <CoupleAnniversaryWidget
+                    profile={profile}
+                    anniversaryDate={anniversaryDate}
+                    onUpdateAnniversaryDate={updateAnniversaryDate}
+                  />
 
                   <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
                     <div className="xl:col-span-8 space-y-5 min-w-0">
@@ -577,6 +684,7 @@ export default function CoupleSpaceDashboard() {
                           updateGamesState((prev) => ({
                             ...prev,
                             activeGame: game,
+                            activeSubTab: game,
                           }))
                         }
                       />

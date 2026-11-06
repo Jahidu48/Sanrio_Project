@@ -92,7 +92,7 @@ export function SanrioMoodPill({
       ? profile.userBCharacter
       : profile.userACharacter;
   const partnerMeta = getSanrioCharacter(
-    partnerMood?.characterId || partnerCharId,
+    partnerCharId || partnerMood?.characterId,
     "my-melody"
   );
 
@@ -101,14 +101,14 @@ export function SanrioMoodPill({
       ? profile.userACharacter
       : profile.userBCharacter;
   const myMeta = getSanrioCharacter(
-    myMood.characterId || myCharId,
+    myCharId || myMood.characterId,
     "cinnamoroll"
   );
 
   const handleSelectPreset = (preset: (typeof PRESET_MOODS)[0]) => {
     playSuccess();
     onUpdateMood({
-      characterId: preset.characterId,
+      characterId: myCharId || preset.characterId,
       statusText: preset.statusText,
       emoji: preset.emoji,
     });
@@ -120,6 +120,7 @@ export function SanrioMoodPill({
     if (!customText.trim()) return;
     playSuccess();
     onUpdateMood({
+      characterId: myCharId,
       statusText: customText.trim(),
       emoji: "💖",
     });

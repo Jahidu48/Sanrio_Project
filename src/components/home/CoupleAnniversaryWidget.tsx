@@ -1,30 +1,32 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, Heart, Sparkles, Edit3, Check, PartyPopper } from "lucide-react";
+import { Heart, Sparkles, Edit3, Check, PartyPopper } from "lucide-react";
 import { getSanrioCharacter } from "@/lib/sanrioCharacters";
 import { useAudio } from "@/context/AudioContext";
 import type { CoupleProfile } from "@/lib/types";
 
 export interface CoupleAnniversaryWidgetProps {
   profile: CoupleProfile;
+  anniversaryDate: string;
+  onUpdateAnniversaryDate: (date: string) => void;
 }
 
-const STORAGE_KEY = "cinnamelo_anniversary_date_v1";
-const DEFAULT_DATE = "2024-01-01"; // Fallback anniversary start date
-
-export function CoupleAnniversaryWidget({ profile }: CoupleAnniversaryWidgetProps) {
+export function CoupleAnniversaryWidget({
+  profile,
+  anniversaryDate,
+  onUpdateAnniversaryDate,
+}: CoupleAnniversaryWidgetProps) {
   const { playPop, playSuccess } = useAudio();
-  const [anniversaryDate, setAnniversaryDate] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      return window.localStorage.getItem(STORAGE_KEY) || DEFAULT_DATE;
-    }
-    return DEFAULT_DATE;
-  });
-
   const [isEditing, setIsEditing] = useState(false);
   const [draftDate, setDraftDate] = useState(anniversaryDate);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraftDate(anniversaryDate);
+    }
+  }, [anniversaryDate, isEditing]);
 
   const charA = getSanrioCharacter(profile.userACharacter, "cinnamoroll");
   const charB = getSanrioCharacter(profile.userBCharacter, "my-melody");
@@ -74,10 +76,7 @@ export function CoupleAnniversaryWidget({ profile }: CoupleAnniversaryWidgetProp
   const handleSaveDate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!draftDate) return;
-    setAnniversaryDate(draftDate);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_KEY, draftDate);
-    }
+    onUpdateAnniversaryDate(draftDate);
     setIsEditing(false);
     playSuccess();
   };
