@@ -32,7 +32,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "cinnamoroll",
     name: "Cinnamoroll",
-    svgPath: "/characters/cinnamoroll.svg",
+    svgPath: "/characters/cinnamoroll.png",
     accentHex: "#BAE6FD",
     softBg: "bg-sky-50 border-sky-200/80",
     tagline: "Anak anjing awan lembut",
@@ -40,7 +40,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "my-melody",
     name: "My Melody",
-    svgPath: "/characters/my-melody.svg",
+    svgPath: "/characters/my-melody.png",
     accentHex: "#FECDD3",
     softBg: "bg-rose-50 border-pink-200/80",
     tagline: "Manis, tulus & penuh cinta",
@@ -48,7 +48,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "kuromi",
     name: "Kuromi",
-    svgPath: "/characters/kuromi.svg",
+    svgPath: "/characters/kuromi.png",
     accentHex: "#E9D5FF",
     softBg: "bg-purple-50 border-purple-200/80",
     tagline: "Usil tapi diam-diam romantis",
@@ -56,7 +56,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "hello-kitty",
     name: "Hello Kitty",
-    svgPath: "/characters/hello-kitty.svg",
+    svgPath: "/characters/hello-kitty.png",
     accentHex: "#FDA4AF",
     softBg: "bg-red-50 border-red-200/80",
     tagline: "Ikon pita merah klasik",
@@ -64,7 +64,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "pompompurin",
     name: "Pompompurin",
-    svgPath: "/characters/pompompurin.svg",
+    svgPath: "/characters/pompompurin.png",
     accentHex: "#FEF08A",
     softBg: "bg-amber-50 border-amber-200/80",
     tagline: "Hangat seperti puding karamel",
@@ -72,7 +72,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "pochacco",
     name: "Pochacco",
-    svgPath: "/characters/pochacco.svg",
+    svgPath: "/characters/pochacco.png",
     accentHex: "#BBF7D0",
     softBg: "bg-emerald-50 border-emerald-200/80",
     tagline: "Ceria & suka jalan berdua",
@@ -80,7 +80,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "keroppi",
     name: "Keroppi",
-    svgPath: "/characters/keroppi.svg",
+    svgPath: "/characters/keroppi.png",
     accentHex: "#D9F99D",
     softBg: "bg-lime-50 border-lime-200/80",
     tagline: "Semangat petualangan seru",
@@ -88,7 +88,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "little-twin-stars",
     name: "Little Twin Stars",
-    svgPath: "/characters/little-twin-stars.svg",
+    svgPath: "/characters/little-twin-stars.png",
     accentHex: "#DDD6FE",
     softBg: "bg-violet-50 border-violet-200/80",
     tagline: "Kiki & Lala sepasang bintang",
@@ -96,7 +96,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "badtz-maru",
     name: "Badtz-Maru",
-    svgPath: "/characters/badtz-maru.svg",
+    svgPath: "/characters/badtz-maru.png",
     accentHex: "#CBD5E1",
     softBg: "bg-slate-100 border-slate-200/80",
     tagline: "Cool di luar, perhatian di dalam",
@@ -104,7 +104,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "hangyodon",
     name: "Hangyodon",
-    svgPath: "/characters/hangyodon.svg",
+    svgPath: "/characters/hangyodon.png",
     accentHex: "#99F6E4",
     softBg: "bg-teal-50 border-teal-200/80",
     tagline: "Humoris & bikin ketawa terus",
@@ -112,7 +112,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "tuxedosam",
     name: "Tuxedosam",
-    svgPath: "/characters/tuxedosam.svg",
+    svgPath: "/characters/tuxedosam.png",
     accentHex: "#BFDBFE",
     softBg: "bg-blue-50 border-blue-200/80",
     tagline: "Penguin rapi berdasi kupu-kupu",
@@ -120,7 +120,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "chococat",
     name: "Chococat",
-    svgPath: "/characters/chococat.svg",
+    svgPath: "/characters/chococat.png",
     accentHex: "#FDE68A",
     softBg: "bg-orange-50 border-orange-200/80",
     tagline: "Peka & selalu tahu duluan",
@@ -128,7 +128,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "cogimyun",
     name: "Cogimyun",
-    svgPath: "/characters/cogimyun.svg",
+    svgPath: "/characters/cogimyun.png",
     accentHex: "#FCE7F3",
     softBg: "bg-pink-50 border-pink-200/80",
     tagline: "Selembut tepung gandum putih",
@@ -136,7 +136,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "wish-me-mell",
     name: "Wish Me Mell",
-    svgPath: "/characters/wish-me-mell.svg",
+    svgPath: "/characters/wish-me-mell.png",
     accentHex: "#FBCFE8",
     softBg: "bg-rose-50 border-rose-200/80",
     tagline: "Pembawa surat penuh harapan",
@@ -144,7 +144,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "marroncream",
     name: "Marroncream",
-    svgPath: "/characters/marroncream.svg",
+    svgPath: "/characters/marroncream.png",
     accentHex: "#FED7AA",
     softBg: "bg-amber-50 border-orange-200/80",
     tagline: "Manis ala kafe Paris",
@@ -152,7 +152,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "usahana",
     name: "Usahana",
-    svgPath: "/characters/usahana.svg",
+    svgPath: "/characters/usahana.png",
     accentHex: "#FEF08A",
     softBg: "bg-yellow-50 border-yellow-200/80",
     tagline: "Penuh warna musim panas",
@@ -160,7 +160,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "pekkle",
     name: "Pekkle",
-    svgPath: "/characters/pekkle.svg",
+    svgPath: "/characters/pekkle.png",
     accentHex: "#BAE6FD",
     softBg: "bg-sky-50 border-sky-200/80",
     tagline: "Bebek baik hati yang suka menari",
@@ -168,7 +168,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "my-sweet-piano",
     name: "My Sweet Piano",
-    svgPath: "/characters/my-sweet-piano.svg",
+    svgPath: "/characters/my-sweet-piano.png",
     accentHex: "#FBCFE8",
     softBg: "bg-pink-50 border-pink-200/80",
     tagline: "Domba pink lembut sahabat Melody",
@@ -176,7 +176,7 @@ export const SANRIO_CHARACTERS: SanrioCharacterMeta[] = [
   {
     id: "corocorokuririn",
     name: "Corocorokuririn",
-    svgPath: "/characters/corocorokuririn.svg",
+    svgPath: "/characters/corocorokuririn.png",
     accentHex: "#FED7AA",
     softBg: "bg-amber-50 border-amber-200/80",
     tagline: "Hamster mungil penuh rasa ingin tahu",
