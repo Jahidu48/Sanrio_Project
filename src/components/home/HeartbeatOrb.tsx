@@ -52,7 +52,10 @@ export function HeartbeatOrb({
   };
 
   return (
-    <section className="saas-glow-card p-6 sm:p-7">
+    <section
+      className="saas-glow-card p-6 sm:p-7 gpu-layer"
+      style={{ transform: "translateZ(0)", willChange: "transform" }}
+    >
       {/* Signature SaaS Soft Radial Pastel Aura */}
       <div className="pointer-events-none absolute -top-16 left-1/4 h-52 w-52 rounded-full bg-[#BAE6FD]/35 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-16 right-1/4 h-52 w-52 rounded-full bg-[#FECDD3]/35 blur-3xl" />

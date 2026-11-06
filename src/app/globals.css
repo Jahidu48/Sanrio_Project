@@ -42,16 +42,22 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* View Transitions API: Zero-Frame-Drop Instant Theme Switching (150ms GPU Crossfade) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 150ms;
+  animation-timing-function: ease-out;
+}
+
 html {
   overflow-x: clip;
   width: 100%;
   max-width: 100%;
-  scroll-behavior: smooth;
+  overscroll-behavior-y: contain;
   background-color: var(--bg-main);
   color: var(--text-main);
   font-family: "Plus Jakarta Sans", "Nunito", "Inter", -apple-system,
     BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 body {
@@ -60,53 +66,59 @@ body {
   max-width: 100%;
   overflow-x: clip;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   background-color: var(--bg-main);
   color: var(--text-main);
   font-family: "Plus Jakarta Sans", "Nunito", "Inter", -apple-system,
     BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color 150ms ease-out;
 }
 
-/* Dreamy Authentic Sanrio World Backdrop (Inspired by Sanrio Kids Festival & Balloon Sky) */
+/* GPU Hardware Layer Promotion Helper */
+.gpu-layer {
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+/* Dreamy Authentic Sanrio World Backdrop (GPU-Friendly Scroll on Mobile, Fixed on Desktop) */
 .sanrio-shell-backdrop {
   background-color: #e0f2fe;
   background-image:
-    /* Floating clouds and hot air balloon glow in the upper sky */
     radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.4) 30%, transparent 65%),
     radial-gradient(circle at 82% 16%, rgba(254, 205, 211, 0.6) 0%, rgba(255, 255, 255, 0.4) 35%, transparent 68%),
     radial-gradient(circle at 50% 8%, rgba(224, 242, 254, 0.9) 0%, transparent 55%),
-    /* Soft rainbow pastel aura */
     radial-gradient(ellipse at 50% 32%, rgba(253, 224, 71, 0.15) 0%, rgba(244, 114, 182, 0.12) 28%, rgba(56, 189, 248, 0.14) 52%, transparent 75%),
-    /* Rolling green meadow & blooming flower glow at the bottom */
     radial-gradient(ellipse at 25% 98%, rgba(187, 247, 208, 0.55) 0%, transparent 50%),
     radial-gradient(ellipse at 75% 98%, rgba(254, 205, 211, 0.5) 0%, transparent 50%),
-    /* Subtle cute stardust and hearts sparkle grid */
     radial-gradient(rgba(244, 114, 182, 0.14) 1.25px, transparent 1.25px),
-    /* Main Sanrio Atmospheric Sky-to-Meadow Gradient */
     linear-gradient(180deg, #bae6fd 0%, #e0f2fe 18%, #f0f7ff 38%, #fdf2f8 65%, #fef2f2 84%, #f0fdf4 100%);
   background-size: auto, auto, auto, auto, auto, auto, 28px 28px, 100% 100%;
-  background-attachment: fixed;
+  background-attachment: scroll;
 }
 
 /* Dark Mode: Kuromi Midnight Dreamy Stardust Backdrop */
 .dark .sanrio-shell-backdrop {
   background-color: #080c16;
   background-image:
-    /* Glowing Kuromi Moon Aura */
     radial-gradient(circle at 84% 14%, rgba(192, 132, 252, 0.28) 0%, rgba(147, 51, 234, 0.15) 35%, transparent 65%),
     radial-gradient(circle at 16% 18%, rgba(244, 114, 182, 0.22) 0%, transparent 55%),
     radial-gradient(circle at 50% 85%, rgba(56, 189, 248, 0.14) 0%, transparent 55%),
     radial-gradient(ellipse at 50% 35%, rgba(168, 85, 247, 0.18) 0%, transparent 68%),
-    /* Sparkle stardust grid */
     radial-gradient(rgba(192, 132, 252, 0.16) 1.25px, transparent 1.25px),
-    /* Midnight Slate-to-Indigo Deep Sky Gradient */
     linear-gradient(180deg, #070a12 0%, #0d1322 25%, #15112c 60%, #090d16 100%);
   background-size: auto, auto, auto, auto, 32px 32px, 100% 100%;
-  background-attachment: fixed;
+  background-attachment: scroll;
 }
 
-/* SaaS Reference Card: Uses strict CSS theme variables for perfect contrast in both modes */
+@media (min-width: 1024px) {
+  .sanrio-shell-backdrop,
+  .dark .sanrio-shell-backdrop {
+    background-attachment: fixed;
+  }
+}
+
+/* SaaS Reference Card: Zero-Lag Instant Theme Variable Colors + GPU Transform Only */
 .saas-glow-card {
   position: relative;
   overflow: hidden;
@@ -117,7 +129,7 @@ body {
   box-shadow:
     0 10px 30px -10px rgba(30, 41, 59, 0.05),
     0 2px 6px -1px rgba(30, 41, 59, 0.02);
-  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease, background-color 0.22s ease, color 0.22s ease;
+  transition: transform 0.18s ease-out, box-shadow 0.18s ease-out;
 }
 
 .saas-glow-card:hover {
@@ -127,10 +139,9 @@ body {
 }
 
 .dark .saas-glow-card {
-  background-color: var(--bg-card);
+  background-color: rgba(30, 41, 59, 0.96);
   border: 1px solid var(--border-color);
   color: var(--text-main);
-  backdrop-filter: blur(12px);
   box-shadow:
     0 10px 30px -10px rgba(0, 0, 0, 0.6),
     0 2px 8px -1px rgba(192, 132, 252, 0.12);
@@ -166,12 +177,18 @@ body {
   gap: 0.375rem;
   border-radius: 9999px;
   border: 1px solid #cbd5e1;
-  background-color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.95);
   padding: 0.42rem 1rem;
   font-size: 0.75rem;
   font-weight: 600;
   color: #1e293b;
-  transition: all 0.18s ease;
+  user-select: none;
+  touch-action: manipulation;
+  transition: transform 0.1s ease-out;
+}
+
+.saas-pill-btn:active {
+  transform: scale(0.96);
 }
 
 .saas-pill-btn:hover {
@@ -182,7 +199,7 @@ body {
 
 .dark .saas-pill-btn {
   border-color: #475569;
-  background-color: rgba(30, 41, 59, 0.8);
+  background-color: rgba(30, 41, 59, 0.92);
   color: #e2e8f0;
 }
 

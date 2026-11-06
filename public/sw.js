@@ -1,4 +1,4 @@
-const CACHE_NAME = "cinnamelo-pwa-v7";
+const CACHE_NAME = "cinnamelo-pwa-v8";
 const APP_SHELL = ["/manifest.json", "/icons/icon-192.svg", "/icons/icon-512.svg"];
 
 self.addEventListener("install", (event) => {
@@ -6,6 +6,7 @@ self.addEventListener("install", (event) => {
     caches
       .open(CACHE_NAME)
       .then((cache) => cache.addAll(APP_SHELL))
+      .catch(() => {})
       .then(() => self.skipWaiting())
   );
 });
@@ -15,7 +16,11 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+        Promise.all(
+          keys
+            .filter((key) => key !== CACHE_NAME)
+            .map((key) => caches.delete(key))
+        )
       )
       .then(() => self.clients.claim())
   );
@@ -24,16 +29,30 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
-  if (url.pathname.startsWith("/api/")) return;
 
-  // Always Network First for HTML navigations and _next JS chunks so code updates deploy immediately!
-  if (event.request.mode === "navigate" || url.pathname.startsWith("/_next/")) {
+  // Never intercept API streams or localhost dev bundles (prevents stale HMR chunks in dev)
+  const isLocalDev =
+    self.location.hostname === "localhost" ||
+    self.location.hostname === "127.0.0.1";
+  if (isLocalDev || url.pathname.startsWith("/api/")) return;
+
+  // Network First for HTML navigations and Next.js chunks so updates deploy immediately
+  if (
+    event.request.mode === "navigate" ||
+    url.pathname.startsWith("/_next/")
+  ) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          if (response && response.status === 200 && url.origin === self.location.origin) {
+          if (
+            response &&
+            response.status === 200 &&
+            url.origin === self.location.origin
+          ) {
             const cloned = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cloned));
+            caches
+              .open(CACHE_NAME)
+              .then((cache) => cache.put(event.request, cloned));
           }
           return response;
         })
@@ -45,9 +64,15 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response && response.status === 200 && url.origin === self.location.origin) {
+        if (
+          response &&
+          response.status === 200 &&
+          url.origin === self.location.origin
+        ) {
           const cloned = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cloned));
+          caches
+            .open(CACHE_NAME)
+            .then((cache) => cache.put(event.request, cloned));
         }
         return response;
       })
@@ -55,7 +80,7 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// PWA Notification Click Handler: Focus or open the app window
+// OS & Mobile PWA Notification Click Handler
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const urlToOpen = event.notification.data?.url || "/";

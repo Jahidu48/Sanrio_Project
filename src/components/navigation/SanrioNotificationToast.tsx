@@ -4,12 +4,14 @@ import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BellRing, ShieldAlert, Sparkles, X } from "lucide-react";
 import {
+  clearTabTitleNotification,
   getNotificationPermission,
   requestNotificationPermission,
   sendDeviceNotification,
   type NotificationPermissionState,
 } from "@/lib/notifications";
 import { useAudio } from "@/context/AudioContext";
+import type { AppTab } from "@/lib/types";
 
 interface ToastData {
   id: string;
@@ -17,57 +19,66 @@ interface ToastData {
   body: string;
   icon?: string;
   url?: string;
+  targetTab?: AppTab;
   timestamp: number;
 }
 
 export function SanrioNotificationToast() {
   const [toast, setToast] = useState<ToastData | null>(null);
-  const [permission, setPermission] = useState<NotificationPermissionState>("default");
+  const [permission, setPermission] =
+    useState<NotificationPermissionState>("default");
   const [dismissedPrompt, setDismissedPrompt] = useState(false);
   const { playPop, playChime } = useAudio();
 
-  // Re-check notification permission state on mount and window focus
+  // Re-check notification permission state on mount, focus, and explicit permission events
   useEffect(() => {
     const updatePerm = () => {
-      const current = getNotificationPermission();
-      setPermission(current);
+      setPermission(getNotificationPermission());
     };
 
     updatePerm();
     window.addEventListener("focus", updatePerm);
-    return () => window.removeEventListener("focus", updatePerm);
+    window.addEventListener("sanrio-notification-perm-changed", updatePerm);
+    return () => {
+      window.removeEventListener("focus", updatePerm);
+      window.removeEventListener(
+        "sanrio-notification-perm-changed",
+        updatePerm
+      );
+    };
   }, []);
 
-  // Listen to in-app toast event dispatch
+  // Listen to In-App Toast event dispatch (Tier 2 Notification Engine)
   useEffect(() => {
-    const handleInAppToast = (e: CustomEvent<any>) => {
-      if (!e.detail) return;
+    const handleInAppToast = (e: Event) => {
+      const customEv = e as CustomEvent<any>;
+      if (!customEv.detail) return;
       playChime();
       const newToast: ToastData = {
         id: `toast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        title: e.detail.title || "Kabar dari Pasangan 💖",
-        body: e.detail.body || "",
-        icon: e.detail.icon || "/characters/cinnamoroll.svg",
-        url: e.detail.url || "/",
+        title: customEv.detail.title || "Kabar dari Pasangan 💖",
+        body: customEv.detail.body || "",
+        icon: customEv.detail.icon || "/characters/cinnamoroll.svg",
+        url: customEv.detail.url || "/",
+        targetTab: customEv.detail.targetTab,
         timestamp: Date.now(),
       };
       setToast(newToast);
     };
 
-    window.addEventListener("sanrio-in-app-toast" as any, handleInAppToast as EventListener);
-
+    window.addEventListener("sanrio-in-app-toast", handleInAppToast);
     return () => {
-      window.removeEventListener("sanrio-in-app-toast" as any, handleInAppToast as EventListener);
+      window.removeEventListener("sanrio-in-app-toast", handleInAppToast);
     };
   }, [playChime]);
 
   // Auto-dismiss in-app toast after 4.5 seconds
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       setToast(null);
     }, 4500);
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [toast]);
 
   const handleRequestPermission = async () => {
@@ -80,31 +91,41 @@ export function SanrioNotificationToast() {
       sendDeviceNotification("Notifikasi Cinnamelo Aktif! 🔔💖", {
         body: "Kamu & pasangan sekarang akan selalu terhubung di HP & Laptop!",
       });
-    } else if (res === "denied") {
-      alert(
-        "Izin notifikasi diblokir di browser. Buka pengaturan browser (ikon gembok 🔒 di sebelah kiri URL) untuk mengizinkan notifikasi!"
-      );
     }
   };
 
-  const showBanner = !dismissedPrompt && (permission === "default" || permission === "denied");
+  const handleClickToast = () => {
+    clearTabTitleNotification();
+    if (toast?.targetTab && typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("sanrio-navigate-tab", {
+          detail: { tab: toast.targetTab },
+        })
+      );
+    }
+    setToast(null);
+  };
+
+  const showBanner =
+    !dismissedPrompt && (permission === "default" || permission === "denied");
 
   return (
     <>
-      {/* 
-        1. FLOATING PERMISSION PROMPT BANNER 
-        Properly centered across all devices via inset-x-0 & flex justify-center 
-        (NEVER cut off on mobile!)
-      */}
+      {/* 1. FLOATING PERMISSION PROMPT BANNER (Mobile-Safe Centered Wrapper) */}
       <AnimatePresence>
         {showBanner && (
-          <div className="fixed top-16 sm:top-20 inset-x-0 z-50 flex justify-center px-3 sm:px-4 pointer-events-none">
+          <div className="fixed top-16 sm:top-20 inset-x-0 z-40 flex justify-center px-3 sm:px-4 pointer-events-none">
             <motion.div
-              initial={{ opacity: 0, y: -18, scale: 0.95 }}
+              initial={{ opacity: 0, y: -16, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -18, scale: 0.95 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
-              className={`w-full max-w-lg pointer-events-auto rounded-2xl p-3 shadow-2xl backdrop-blur-xl border ${
+              exit={{ opacity: 0, y: -16, scale: 0.96 }}
+              transition={{
+                type: "spring",
+                stiffness: 380,
+                damping: 30,
+                mass: 0.8,
+              }}
+              className={`w-full max-w-lg pointer-events-auto rounded-2xl p-3 shadow-2xl border transform-gpu ${
                 permission === "denied"
                   ? "bg-slate-900/95 border-amber-400/40 text-amber-200"
                   : "bg-gradient-to-r from-pink-500/95 via-rose-500/95 to-purple-600/95 border-white/30 text-white"
@@ -121,17 +142,19 @@ export function SanrioNotificationToast() {
                   </div>
                   <div className="min-w-0">
                     <h4 className="text-xs font-bold leading-tight flex items-center gap-1">
-                      <span>
+                      <span className="truncate">
                         {permission === "denied"
-                          ? "Izin Notifikasi Diblokir"
-                          : "Aktifkan Notifikasi Cinnamelo!"}
+                          ? "Izin Notifikasi Browser Diblokir"
+                          : "Aktifkan Notifikasi HP & Laptop"}
                       </span>
-                      {permission !== "denied" && <Sparkles className="h-3 w-3 text-amber-300" />}
+                      {permission !== "denied" && (
+                        <Sparkles className="h-3 w-3 shrink-0 text-amber-300" />
+                      )}
                     </h4>
                     <p className="text-[11px] opacity-90 truncate mt-0.5">
                       {permission === "denied"
-                        ? "Klik ikon gembok 🔒 di bilah URL peramban untuk mengizinkan."
-                        : "Dapatkan kabar saat pasangan masuk web, kirim chat & rindu!"}
+                        ? "Klik ikon gembok di bilah alamat browser untuk mengizinkan."
+                        : "Dapatkan kabar instan saat pasangan chat, telepon, atau rindu!"}
                     </p>
                   </div>
                 </div>
@@ -141,7 +164,7 @@ export function SanrioNotificationToast() {
                     <button
                       type="button"
                       onClick={handleRequestPermission}
-                      className="rounded-full bg-white hover:bg-pink-50 text-pink-600 px-3 py-1.5 text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+                      className="rounded-full bg-white hover:bg-pink-50 text-pink-600 px-3 py-1.5 text-xs font-bold shadow-xs active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer whitespace-nowrap"
                     >
                       Aktifkan ✨
                     </button>
@@ -149,7 +172,7 @@ export function SanrioNotificationToast() {
                   <button
                     type="button"
                     onClick={() => setDismissedPrompt(true)}
-                    className="opacity-80 hover:opacity-100 p-1 cursor-pointer"
+                    className="opacity-80 hover:opacity-100 p-1 active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer"
                     title="Tutup banner"
                   >
                     <X className="h-4 w-4" />
@@ -161,20 +184,23 @@ export function SanrioNotificationToast() {
         )}
       </AnimatePresence>
 
-      {/* 
-        2. FLOATING REALTIME SANRIO IN-APP NOTIFICATION TOAST 
-        Properly centered via flex wrapper (NEVER cut off!)
-      */}
+      {/* 2. FLOATING IN-APP NOTIFICATION BANNER (Desktop & Mobile Active Tab) */}
       <AnimatePresence>
         {toast && (
-          <div className="fixed top-4 inset-x-0 z-50 flex justify-center px-3 sm:px-4 pointer-events-none">
+          <div className="fixed top-3.5 inset-x-0 z-50 flex justify-center px-3 sm:px-4 pointer-events-none">
             <motion.aside
               key={toast.id}
-              initial={{ opacity: 0, y: -25, scale: 0.94 }}
+              initial={{ opacity: 0, y: -24, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.94 }}
-              transition={{ type: "spring", stiffness: 450, damping: 28 }}
-              className="w-full max-w-md pointer-events-auto rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-pink-300 dark:border-purple-600 p-3 shadow-2xl"
+              exit={{ opacity: 0, y: -18, scale: 0.95 }}
+              transition={{
+                type: "spring",
+                stiffness: 400,
+                damping: 28,
+                mass: 0.8,
+              }}
+              onClick={handleClickToast}
+              className="w-full max-w-md pointer-events-auto cursor-pointer rounded-2xl bg-white/98 dark:bg-slate-900/98 lg:backdrop-blur-md border border-pink-300 dark:border-purple-600 p-3 shadow-2xl transform-gpu active:scale-[0.98] transition-transform duration-100"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
@@ -182,13 +208,13 @@ export function SanrioNotificationToast() {
                     <img
                       src={toast.icon || "/characters/cinnamoroll.svg"}
                       alt=""
-                      className="h-7 w-7 object-contain drop-shadow-xs"
+                      className="h-7 w-7 object-contain"
                     />
                   </div>
 
                   <div className="min-w-0">
                     <h4 className="text-xs font-extrabold text-slate-800 dark:text-white flex items-center gap-1.5 truncate">
-                      <span>{toast.title}</span>
+                      <span className="truncate">{toast.title}</span>
                     </h4>
                     {toast.body && (
                       <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 line-clamp-2 leading-relaxed">
@@ -200,8 +226,11 @@ export function SanrioNotificationToast() {
 
                 <button
                   type="button"
-                  onClick={() => setToast(null)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 cursor-pointer shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setToast(null);
+                  }}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 shrink-0 active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer"
                   title="Tutup pemberitahuan"
                 >
                   <X className="h-4 w-4" />

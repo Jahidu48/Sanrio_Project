@@ -33,7 +33,9 @@ import type {
   WebRTCSignalMessage,
 } from "@/lib/types";
 import type { SanrioCharacterId } from "@/lib/sanrioCharacters";
-import { notifyPartnerWaiting, notifyPartnerOnline } from "@/lib/notifications";
+import { notifyPartnerWaiting } from "@/lib/notifications";
+
+export type NetworkConnectionStatus = "connected" | "reconnecting" | "offline";
 
 interface UseCoupleRealtimeOptions {
   profile: CoupleProfile;
@@ -118,10 +120,20 @@ export function useCoupleRealtime({
   const [connectionMode, setConnectionMode] = useState<
     "supabase" | "local-realtime"
   >(isSupabaseConfigured ? "supabase" : "local-realtime");
+  const [isBrowserOnline, setIsBrowserOnline] = useState<boolean>(() =>
+    typeof navigator !== "undefined" ? navigator.onLine : true
+  );
+  const [isChannelReconnecting, setIsChannelReconnecting] =
+    useState<boolean>(false);
   const [onlineRoles, setOnlineRoles] = useState<Set<PartnerRole>>(
     () => new Set([profile.role])
   );
   const [simulatePartnerOnline, setSimulatePartnerOnline] = useState(false);
+
+  const onlineRolesRef = useRef<Set<PartnerRole>>(onlineRoles);
+  onlineRolesRef.current = onlineRoles;
+  const partnerLastSeenAtRef = useRef<number>(0);
+  const partnerOfflineGraceTimerRef = useRef<number | null>(null);
 
   const todayISO = useMemo(() => getTodayDateISO(), []);
   const todayQuestion = useMemo(
@@ -200,9 +212,6 @@ export function useCoupleRealtime({
 
   const supabaseChannelRef = useRef<RealtimeChannel | null>(null);
   const localBroadcastRef = useRef<BroadcastChannel | null>(null);
-  const localPeerMapRef = useRef<
-    Map<string, { role: PartnerRole; lastSeen: number }>
-  >(new Map());
   const seenEventIdsRef = useRef<Set<string>>(new Set());
 
   const heartbeatCallbackRef = useRef(onHeartbeatReceived);
@@ -421,10 +430,213 @@ export function useCoupleRealtime({
     };
   }, [profile.roomId, profile.userAName, profile.userBName, todayISO]);
 
-  // Subscribe to Supabase Realtime ('couple-room') + Local BroadcastChannel Bridge
+  // Unified Multi-Channel Real-time Broadcaster (Supabase + Local BroadcastChannel + SSE Hub)
+  const emitRealtime = useCallback(
+    (event: string, payload: any, extra: Record<string, any> = {}) => {
+      // 1. Supabase Realtime Broadcast (self: false)
+      supabaseChannelRef.current?.send({
+        type: "broadcast",
+        event,
+        payload,
+        ...extra,
+      });
+
+      // 2. Local Cross-Tab Broadcast Channel (within same browser)
+      try {
+        const safeData = JSON.parse(
+          JSON.stringify({
+            type: event,
+            payload,
+            sessionId,
+            ...extra,
+          })
+        );
+        localBroadcastRef.current?.postMessage(safeData);
+      } catch (err) {
+        console.debug(
+          "BroadcastChannel postMessage skipped non-cloneable:",
+          err
+        );
+      }
+
+      // 3. Network SSE Hub API (Instant sync between phone and PC over local/LAN network)
+      if (typeof window !== "undefined") {
+        fetch("/api/realtime-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomId: profile.roomId,
+            event,
+            payload,
+            senderRole: profile.role,
+            senderSessionId: sessionId,
+            ...extra,
+          }),
+        }).catch(() => {});
+      }
+    },
+    [profile.roomId, profile.role, sessionId]
+  );
+
+  // ==========================================================================
+  // HYBRID PRESENCE ENGINE (Supabase Presence + Broadcast Ping-Pong + Grace)
+  // ==========================================================================
+  const partnerRole: PartnerRole =
+    profile.role === "user_a" ? "user_b" : "user_a";
+
+  const markPartnerActive = useCallback(() => {
+    partnerLastSeenAtRef.current = Date.now();
+    if (partnerOfflineGraceTimerRef.current) {
+      window.clearTimeout(partnerOfflineGraceTimerRef.current);
+      partnerOfflineGraceTimerRef.current = null;
+    }
+    setOnlineRoles((prev) => {
+      if (prev.has(profile.role) && prev.has(partnerRole)) {
+        return prev;
+      }
+      return new Set<PartnerRole>([profile.role, partnerRole]);
+    });
+  }, [partnerRole, profile.role]);
+
+  const syncPresenceNow = useCallback(() => {
+    const myName =
+      profile.role === "user_a" ? profile.userAName : profile.userBName;
+    const visibility =
+      typeof document !== "undefined" ? document.visibilityState : "visible";
+
+    setOnlineRoles((prev) => {
+      if (prev.has(profile.role)) return prev;
+      const next = new Set<PartnerRole>();
+      next.add(profile.role);
+      if (prev.has(partnerRole)) next.add(partnerRole);
+      return next;
+    });
+
+    if (supabaseChannelRef.current) {
+      supabaseChannelRef.current
+        .track({
+          role: profile.role,
+          name: myName,
+          online_at: new Date().toISOString(),
+          visibility,
+        })
+        .catch(() => {});
+    }
+
+    emitRealtime("presence-ping", {
+      role: profile.role,
+      name: myName,
+      visibility,
+      timestamp: Date.now(),
+      sessionId,
+    });
+  }, [
+    emitRealtime,
+    partnerRole,
+    profile.role,
+    profile.userAName,
+    profile.userBName,
+    sessionId,
+  ]);
+
+  const schedulePartnerOfflineGrace = useCallback(() => {
+    if (!onlineRolesRef.current.has(partnerRole)) return;
+    if (partnerOfflineGraceTimerRef.current) return;
+
+    // Probe partner immediately before marking offline (anti-flicker on 4G/WiFi handoff)
+    const myName =
+      profile.role === "user_a" ? profile.userAName : profile.userBName;
+    emitRealtime("presence-ping", {
+      role: profile.role,
+      name: myName,
+      visibility:
+        typeof document !== "undefined" ? document.visibilityState : "visible",
+      timestamp: Date.now(),
+      sessionId,
+    });
+
+    // 9-second Grace Period before transitioning partner to offline
+    partnerOfflineGraceTimerRef.current = window.setTimeout(() => {
+      partnerOfflineGraceTimerRef.current = null;
+      const elapsed = Date.now() - partnerLastSeenAtRef.current;
+      if (elapsed >= 8500) {
+        setOnlineRoles(new Set<PartnerRole>([profile.role]));
+      }
+    }, 9000);
+  }, [
+    emitRealtime,
+    partnerRole,
+    profile.role,
+    profile.userAName,
+    profile.userBName,
+    sessionId,
+  ]);
+
+  // Lifecycle & Tab Focus Auto-Resync (visibilitychange, focus, online/offline)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        syncPresenceNow();
+      }
+    };
+    const handleFocus = () => {
+      syncPresenceNow();
+    };
+    const handleOnline = () => {
+      setIsBrowserOnline(true);
+      setIsChannelReconnecting(false);
+      syncPresenceNow();
+    };
+    const handleOffline = () => {
+      setIsBrowserOnline(false);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [syncPresenceNow]);
+
+  // Subscribe to Supabase Realtime ('couple-room') + Local BroadcastChannel + SSE Bridge
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
     const channelName = profile.roomId || "couple-room";
+    const myName =
+      profile.role === "user_a" ? profile.userAName : profile.userBName;
+
+    // Ensure current role is always in onlineRoles upon role switch
+    setOnlineRoles((prev) => {
+      const next = new Set<PartnerRole>([profile.role]);
+      if (
+        prev.has(partnerRole) &&
+        Date.now() - partnerLastSeenAtRef.current < 12000
+      ) {
+        next.add(partnerRole);
+      }
+      return next;
+    });
+
+    const replyPresencePong = () => {
+      emitRealtime("presence-pong", {
+        role: profile.role,
+        name: myName,
+        visibility:
+          typeof document !== "undefined"
+            ? document.visibilityState
+            : "visible",
+        timestamp: Date.now(),
+        sessionId,
+      });
+    };
 
     const applyIncomingNote = (note: SharedNote) => {
       setSharedNotes((prev) => {
@@ -486,6 +698,7 @@ export function useCoupleRealtime({
         return next;
       });
       if (msg.sender_role !== profile.role) {
+        markPartnerActive();
         incomingChatCallbackRef.current?.(msg);
 
         // If partner executed a bot command (!play, !pause, etc.), execute on receiver too
@@ -497,7 +710,11 @@ export function useCoupleRealtime({
       }
     };
 
-    const applyChatReaction = (messageId: string, emoji: string, role: PartnerRole) => {
+    const applyChatReaction = (
+      messageId: string,
+      emoji: string,
+      role: PartnerRole
+    ) => {
       setChatMessages((prev) => {
         const next = prev.map((m) => {
           if (m.id !== messageId) return m;
@@ -529,6 +746,7 @@ export function useCoupleRealtime({
 
     const applyChatReadStatus = (readerRole: PartnerRole) => {
       if (readerRole === profile.role) return;
+      markPartnerActive();
       setChatMessages((prev) => {
         const next = prev.map((m) =>
           m.sender_role === profile.role ? { ...m, is_read: true } : m
@@ -547,15 +765,20 @@ export function useCoupleRealtime({
 
     const handleWebRTCSignal = (signal: WebRTCSignalMessage) => {
       if (signal.caller_role === profile.role) return;
+      markPartnerActive();
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("sanrio-webrtc-signal", { detail: signal })
         );
       }
-      if (signal.type === "call-offer") {
+      if (signal.type === "call-offer" && !signal.is_renegotiation) {
         setActiveIncomingCall(signal);
         incomingCallCallbackRef.current?.(signal);
-      } else if (signal.type === "call-end" || signal.type === "call-reject") {
+      } else if (
+        signal.type === "call-end" ||
+        signal.type === "call-reject" ||
+        signal.type === "call-busy"
+      ) {
         setActiveIncomingCall(null);
       }
       setCallSignalQueue(signal);
@@ -564,15 +787,35 @@ export function useCoupleRealtime({
     if (supabase) {
       const channel = supabase.channel(channelName, {
         config: {
-          broadcast: { self: true },
+          broadcast: { self: false },
           presence: { key: sessionId },
         },
       });
 
       channel
+        .on("broadcast", { event: "presence-ping" }, ({ payload }) => {
+          const p = payload as { role?: PartnerRole; sessionId?: string };
+          if (p?.role && p.role !== profile.role) {
+            markPartnerActive();
+            replyPresencePong();
+          }
+        })
+        .on("broadcast", { event: "presence-pong" }, ({ payload }) => {
+          const p = payload as { role?: PartnerRole; sessionId?: string };
+          if (p?.role && p.role !== profile.role) {
+            markPartnerActive();
+          }
+        })
+        .on("broadcast", { event: "presence-leave" }, ({ payload }) => {
+          const p = payload as { role?: PartnerRole };
+          if (!p?.role || p.role !== profile.role) {
+            schedulePartnerOfflineGrace();
+          }
+        })
         .on("broadcast", { event: "heartbeat" }, ({ payload }) => {
           const event = payload as HeartbeatEvent;
           if (!event?.id || markSeen(event.id)) return;
+          if (event.senderRole !== profile.role) markPartnerActive();
           heartbeatCallbackRef.current?.(event);
         })
         .on("broadcast", { event: "qna-updated" }, ({ payload }) => {
@@ -584,11 +827,13 @@ export function useCoupleRealtime({
         .on("broadcast", { event: "canvas-stroke" }, ({ payload }) => {
           const seg = payload as StrokeSegment;
           if (!seg?.id || markSeen(seg.id)) return;
+          if (seg.senderRole !== profile.role) markPartnerActive();
           strokeCallbackRef.current?.(seg);
         })
         .on("broadcast", { event: "canvas-stamp" }, ({ payload }) => {
           const stamp = payload as CanvasStamp;
           if (!stamp?.id || markSeen(stamp.id)) return;
+          if (stamp.senderRole !== profile.role) markPartnerActive();
           setStamps((prev) => [...prev, stamp]);
         })
         .on("broadcast", { event: "canvas-clear" }, ({ payload }) => {
@@ -600,6 +845,7 @@ export function useCoupleRealtime({
         .on("broadcast", { event: "canvas-cursor" }, ({ payload }) => {
           const cursor = payload as PartnerCursor;
           if (cursor && cursor.role !== profile.role) {
+            markPartnerActive();
             setPartnerCursor(cursor);
           }
         })
@@ -616,6 +862,7 @@ export function useCoupleRealtime({
         .on("broadcast", { event: "note-typing" }, ({ payload }) => {
           const typing = payload as NoteTypingStatus;
           if (typing && typing.role !== profile.role) {
+            markPartnerActive();
             setPartnerTyping(typing);
           }
         })
@@ -650,11 +897,16 @@ export function useCoupleRealtime({
         .on("broadcast", { event: "chat-typing" }, ({ payload }) => {
           const status = payload as ChatTypingStatus;
           if (status && status.role !== profile.role) {
+            markPartnerActive();
             setChatTyping(status);
           }
         })
         .on("broadcast", { event: "chat-reaction" }, ({ payload }) => {
-          const p = payload as { messageId: string; emoji: string; role: PartnerRole };
+          const p = payload as {
+            messageId: string;
+            emoji: string;
+            role: PartnerRole;
+          };
           if (p?.messageId && p?.emoji) {
             applyChatReaction(p.messageId, p.emoji, p.role);
           }
@@ -674,12 +926,14 @@ export function useCoupleRealtime({
         .on("broadcast", { event: "partner-mood" }, ({ payload }) => {
           const status = payload as PartnerMoodStatus;
           if (status && status.role !== profile.role) {
+            markPartnerActive();
             setPartnerMood(status);
           }
         })
         .on("broadcast", { event: "music-sync" }, ({ payload }) => {
           const syncEv = payload as MusicSyncEvent;
           if (syncEv && syncEv.senderRole !== profile.role) {
+            markPartnerActive();
             setMusicSyncEvent(syncEv);
             musicSyncCallbackRef.current?.(syncEv);
           }
@@ -701,6 +955,7 @@ export function useCoupleRealtime({
         .on("broadcast", { event: "partner-waiting-ping" }, ({ payload }) => {
           const p = payload as { senderRole: PartnerRole; senderName: string };
           if (p && p.senderRole !== profile.role) {
+            markPartnerActive();
             notifyPartnerWaiting(p.senderName);
           }
         })
@@ -708,34 +963,66 @@ export function useCoupleRealtime({
           const state = channel.presenceState<{
             role: PartnerRole;
             name: string;
+            visibility?: string;
           }>();
-          const activeRoles = new Set<PartnerRole>([profile.role]);
+          let sawPartner = false;
           Object.values(state).forEach((presences) => {
             presences.forEach((p) => {
-              if (p.role) activeRoles.add(p.role);
+              if (p.role === partnerRole) {
+                sawPartner = true;
+              }
             });
           });
-          setOnlineRoles(activeRoles);
+          if (sawPartner) {
+            markPartnerActive();
+          } else {
+            schedulePartnerOfflineGrace();
+          }
         })
         .on("presence", { event: "join" }, ({ newPresences }) => {
-          (newPresences as any[]).forEach((p) => {
-            if (p.role && p.role !== profile.role) {
-              const partnerName =
-                p.name || (p.role === "user_a" ? profile.userAName : profile.userBName);
-              notifyPartnerOnline(partnerName);
+          (newPresences as Array<{ role?: PartnerRole }>).forEach((p) => {
+            if (p.role === partnerRole) {
+              markPartnerActive();
+              replyPresencePong();
             }
           });
         })
+        .on("presence", { event: "leave" }, () => {
+          schedulePartnerOfflineGrace();
+        })
         .subscribe(async (status) => {
           if (status === "SUBSCRIBED") {
+            setIsChannelReconnecting(false);
             await channel.track({
               role: profile.role,
-              name:
-                profile.role === "user_a"
-                  ? profile.userAName
-                  : profile.userBName,
+              name: myName,
               online_at: new Date().toISOString(),
+              visibility:
+                typeof document !== "undefined"
+                  ? document.visibilityState
+                  : "visible",
             });
+            // Immediately emit broadcast presence-ping so partner detects us in milliseconds
+            channel.send({
+              type: "broadcast",
+              event: "presence-ping",
+              payload: {
+                role: profile.role,
+                name: myName,
+                visibility:
+                  typeof document !== "undefined"
+                    ? document.visibilityState
+                    : "visible",
+                timestamp: Date.now(),
+                sessionId,
+              },
+            });
+          } else if (
+            status === "CHANNEL_ERROR" ||
+            status === "TIMED_OUT" ||
+            status === "CLOSED"
+          ) {
+            setIsChannelReconnecting(true);
           }
         });
 
@@ -744,46 +1031,38 @@ export function useCoupleRealtime({
 
     // Local Cross-Tab BroadcastChannel & Network SSE Stream
     let bc: BroadcastChannel | null = null;
-    let presenceTimer: number | null = null;
+    let presenceHeartbeatTimer: number | null = null;
     let eventSource: EventSource | null = null;
-
-    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
-      bc = new BroadcastChannel(`cinnamelo:${channelName}`);
-      localBroadcastRef.current = bc;
-
-      const recomputeLocalPeers = () => {
-        const now = Date.now();
-        const active = new Set<PartnerRole>([profile.role]);
-        localPeerMapRef.current.forEach((val, key) => {
-          if (now - val.lastSeen < 6500) {
-            active.add(val.role);
-          } else {
-            localPeerMapRef.current.delete(key);
-          }
-        });
-        if (!supabase) {
-          setOnlineRoles(active);
-        }
-      };
 
     const handleBridgeEvent = (msg: any) => {
       if (!msg || typeof msg !== "object") return;
+      if (msg.sessionId === sessionId || msg.senderSessionId === sessionId) {
+        return;
+      }
 
       switch (msg.type) {
-        case "presence-ping":
-          localPeerMapRef.current.set(msg.sessionId, {
-            role: msg.role,
-            lastSeen: Date.now(),
-          });
-          recomputeLocalPeers();
+        case "presence-ping": {
+          const p = msg.payload || msg;
+          if (p?.role && p.role !== profile.role) {
+            markPartnerActive();
+            replyPresencePong();
+          }
           break;
+        }
+        case "presence-pong": {
+          const p = msg.payload || msg;
+          if (p?.role && p.role !== profile.role) {
+            markPartnerActive();
+          }
+          break;
+        }
         case "presence-leave":
-          localPeerMapRef.current.delete(msg.sessionId);
-          recomputeLocalPeers();
+          schedulePartnerOfflineGrace();
           break;
         case "heartbeat": {
           const event = msg.payload as HeartbeatEvent;
           if (!event?.id || markSeen(event.id)) return;
+          if (event.senderRole !== profile.role) markPartnerActive();
           heartbeatCallbackRef.current?.(event);
           break;
         }
@@ -795,12 +1074,14 @@ export function useCoupleRealtime({
         case "canvas-stroke": {
           const seg = msg.payload as StrokeSegment;
           if (!seg?.id || markSeen(seg.id)) return;
+          if (seg.senderRole !== profile.role) markPartnerActive();
           strokeCallbackRef.current?.(seg);
           break;
         }
         case "canvas-stamp": {
           const stamp = msg.payload as CanvasStamp;
           if (!stamp?.id || markSeen(stamp.id)) return;
+          if (stamp.senderRole !== profile.role) markPartnerActive();
           setStamps((prev) => [...prev, stamp]);
           break;
         }
@@ -812,7 +1093,10 @@ export function useCoupleRealtime({
         }
         case "canvas-cursor": {
           const cursor = msg.payload as PartnerCursor;
-          if (cursor && cursor.role !== profile.role) setPartnerCursor(cursor);
+          if (cursor && cursor.role !== profile.role) {
+            markPartnerActive();
+            setPartnerCursor(cursor);
+          }
           break;
         }
         case "note-upsert": {
@@ -827,7 +1111,10 @@ export function useCoupleRealtime({
         }
         case "note-typing": {
           const typing = msg.payload as NoteTypingStatus;
-          if (typing && typing.role !== profile.role) setPartnerTyping(typing);
+          if (typing && typing.role !== profile.role) {
+            markPartnerActive();
+            setPartnerTyping(typing);
+          }
           break;
         }
         case "bucket-sync": {
@@ -859,11 +1146,18 @@ export function useCoupleRealtime({
         }
         case "chat-typing": {
           const status = msg.payload as ChatTypingStatus;
-          if (status && status.role !== profile.role) setChatTyping(status);
+          if (status && status.role !== profile.role) {
+            markPartnerActive();
+            setChatTyping(status);
+          }
           break;
         }
         case "chat-reaction": {
-          const p = msg.payload as { messageId: string; emoji: string; role: PartnerRole };
+          const p = msg.payload as {
+            messageId: string;
+            emoji: string;
+            role: PartnerRole;
+          };
           if (p?.messageId && p?.emoji) {
             applyChatReaction(p.messageId, p.emoji, p.role);
           }
@@ -884,6 +1178,7 @@ export function useCoupleRealtime({
         case "partner-mood": {
           const status = msg.payload as PartnerMoodStatus;
           if (status && status.role !== profile.role) {
+            markPartnerActive();
             setPartnerMood(status);
           }
           break;
@@ -891,13 +1186,15 @@ export function useCoupleRealtime({
         case "music-sync": {
           const syncEv = msg.payload as MusicSyncEvent;
           if (syncEv && syncEv.senderRole !== profile.role) {
+            markPartnerActive();
             setMusicSyncEvent(syncEv);
             musicSyncCallbackRef.current?.(syncEv);
           }
           break;
         }
         case "playlist-sync": {
-          const items = (msg.payload?.items || msg.payload) as SharedPlaylistItem[];
+          const items = (msg.payload?.items ||
+            msg.payload) as SharedPlaylistItem[];
           if (Array.isArray(items)) {
             setSharedPlaylist(items);
             try {
@@ -912,8 +1209,12 @@ export function useCoupleRealtime({
           break;
         }
         case "partner-waiting-ping": {
-          const p = msg.payload as { senderRole: PartnerRole; senderName: string };
+          const p = msg.payload as {
+            senderRole: PartnerRole;
+            senderName: string;
+          };
           if (p && p.senderRole !== profile.role) {
+            markPartnerActive();
             notifyPartnerWaiting(p.senderName);
           }
           break;
@@ -929,33 +1230,46 @@ export function useCoupleRealtime({
       }
     };
 
-    bc.onmessage = (ev) => {
-      handleBridgeEvent(ev.data);
-    };
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      bc = new BroadcastChannel(`cinnamelo:${channelName}`);
+      localBroadcastRef.current = bc;
+      bc.onmessage = (ev) => {
+        handleBridgeEvent(ev.data);
+      };
+    }
 
-    // Network Cross-Device SSE Stream (Instant 2-way sync across physical devices)
+    // Network Cross-Device SSE Stream (Instant 2-way sync across local LAN devices)
     if (typeof window !== "undefined" && typeof EventSource !== "undefined") {
       try {
         const sseUrl = `/api/realtime-sync?roomId=${encodeURIComponent(
           profile.roomId
-        )}&role=${encodeURIComponent(profile.role)}&sessionId=${encodeURIComponent(
-          sessionId
-        )}`;
+        )}&role=${encodeURIComponent(
+          profile.role
+        )}&sessionId=${encodeURIComponent(sessionId)}`;
         eventSource = new EventSource(sseUrl);
+
+        eventSource.onopen = () => {
+          if (!supabase) {
+            setIsChannelReconnecting(false);
+          }
+        };
+
+        eventSource.onerror = () => {
+          if (!supabase) {
+            setIsChannelReconnecting(true);
+          }
+        };
 
         eventSource.onmessage = (e) => {
           try {
             const data = JSON.parse(e.data);
             if (!data || typeof data !== "object") return;
 
-            // 1. Initial snapshot on connect
+            // 1. Initial snapshot on connect (Never wipe Supabase presence on serverless instances!)
             if (data.type === "snapshot" && data.payload) {
               const p = data.payload.presence;
-              if (p) {
-                const active = new Set<PartnerRole>();
-                if (p.user_a) active.add("user_a");
-                if (p.user_b) active.add("user_b");
-                setOnlineRoles(active);
+              if (p && p[partnerRole]) {
+                markPartnerActive();
               }
               if (
                 Array.isArray(data.payload.recentMessages) &&
@@ -980,19 +1294,23 @@ export function useCoupleRealtime({
                   })
                 );
               }
-              if (data.payload.qna && data.payload.qna.prompt_date === todayISO) {
+              if (
+                data.payload.qna &&
+                data.payload.qna.prompt_date === todayISO
+              ) {
                 setTodayQnA(data.payload.qna);
               }
               return;
             }
 
-            // 2. Presence updates
+            // 2. Presence updates from LAN SSE hub
             if (data.type === "presence" && data.payload) {
               const p = data.payload;
-              const active = new Set<PartnerRole>();
-              if (p.user_a) active.add("user_a");
-              if (p.user_b) active.add("user_b");
-              setOnlineRoles(active);
+              if (p[partnerRole]) {
+                markPartnerActive();
+              } else if (!supabase) {
+                schedulePartnerOfflineGrace();
+              }
               return;
             }
 
@@ -1010,21 +1328,44 @@ export function useCoupleRealtime({
       }
     }
 
-      bc.postMessage({ type: "presence-ping", sessionId, role: profile.role });
-      presenceTimer = window.setInterval(() => {
-        bc?.postMessage({
-          type: "presence-ping",
-          sessionId,
+    // Immediate broadcast ping on room entry / role switch
+    emitRealtime("presence-ping", {
+      role: profile.role,
+      name: myName,
+      visibility:
+        typeof document !== "undefined" ? document.visibilityState : "visible",
+      timestamp: Date.now(),
+      sessionId,
+    });
+
+    // Periodic Heartbeat Ping-Pong keepalive every 8s while active
+    presenceHeartbeatTimer = window.setInterval(() => {
+      if (typeof document === "undefined" || !document.hidden) {
+        emitRealtime("presence-ping", {
           role: profile.role,
+          name: myName,
+          visibility:
+            typeof document !== "undefined"
+              ? document.visibilityState
+              : "visible",
+          timestamp: Date.now(),
+          sessionId,
         });
-        recomputeLocalPeers();
-      }, 2500);
-    }
+      }
+    }, 8000);
 
     return () => {
-      if (presenceTimer) window.clearInterval(presenceTimer);
+      if (presenceHeartbeatTimer) {
+        window.clearInterval(presenceHeartbeatTimer);
+      }
       if (bc) {
-        bc.postMessage({ type: "presence-leave", sessionId });
+        try {
+          bc.postMessage({
+            type: "presence-leave",
+            role: profile.role,
+            sessionId,
+          });
+        } catch {}
         bc.close();
       }
       if (eventSource) {
@@ -1037,59 +1378,18 @@ export function useCoupleRealtime({
       }
     };
   }, [
+    emitRealtime,
+    markPartnerActive,
     markSeen,
+    partnerRole,
     profile.role,
     profile.roomId,
     profile.userAName,
     profile.userBName,
+    schedulePartnerOfflineGrace,
     sessionId,
     todayISO,
   ]);
-
-  // Unified Multi-Channel Real-time Broadcaster (Supabase + Local BroadcastChannel + SSE Hub)
-  const emitRealtime = useCallback(
-    (event: string, payload: any, extra: Record<string, any> = {}) => {
-      // 1. Supabase Postgres Realtime (if configured)
-      supabaseChannelRef.current?.send({
-        type: "broadcast",
-        event,
-        payload,
-        ...extra,
-      });
-
-      // 2. Local Cross-Tab Broadcast Channel (within same browser)
-      // Must safely serialize to avoid "object could not be cloned" for DOM/WebRTC objects
-      try {
-        const safeData = JSON.parse(
-          JSON.stringify({
-            type: event,
-            payload,
-            ...extra,
-          })
-        );
-        localBroadcastRef.current?.postMessage(safeData);
-      } catch (err) {
-        console.debug("BroadcastChannel postMessage skipped non-cloneable:", err);
-      }
-
-      // 3. Network SSE Hub API (Instant sync between phone and PC over network)
-      if (typeof window !== "undefined") {
-        fetch("/api/realtime-sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            roomId: profile.roomId,
-            event,
-            payload,
-            senderRole: profile.role,
-            senderSessionId: sessionId,
-            ...extra,
-          }),
-        }).catch(() => {});
-      }
-    },
-    [profile.roomId, profile.role, sessionId]
-  );
 
   // --------------------------------------------------------------------------
   // HOME ACTIONS (Heartbeat & Daily Secret Envelope)
@@ -1830,8 +2130,16 @@ export function useCoupleRealtime({
     simulatePartnerOnline ||
     (onlineRoles.has("user_a") && onlineRoles.has("user_b"));
 
+  const networkStatus: NetworkConnectionStatus = !isBrowserOnline
+    ? "offline"
+    : isChannelReconnecting
+    ? "reconnecting"
+    : "connected";
+
   return {
     connectionMode,
+    networkStatus,
+    syncPresenceNow,
     onlineRoles,
     bothPartnersOnline,
     simulatePartnerOnline,

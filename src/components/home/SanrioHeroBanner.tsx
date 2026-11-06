@@ -133,7 +133,7 @@ export function SanrioHeroBanner({
   }, []);
 
   return (
-    <section className="relative overflow-hidden rounded-[32px] border border-[var(--border-color)] shadow-[0_16px_40px_-14px_rgba(244,114,182,0.22)] dark:shadow-[0_16px_40px_-14px_rgba(192,132,252,0.18)] bg-[var(--bg-card)] text-[var(--text-main)] transition-all">
+    <section className="relative overflow-hidden rounded-[32px] border border-[var(--border-color)] shadow-[0_16px_40px_-14px_rgba(244,114,182,0.22)] dark:shadow-[0_16px_40px_-14px_rgba(192,132,252,0.18)] bg-[var(--bg-card)] text-[var(--text-main)]">
       {/* 1. Header Visual Display (Toggle between Duo Characters HD & 16:9 Landscape Artwork) */}
       <div className="relative w-full overflow-hidden bg-sky-50 dark:bg-slate-950 pt-2 pb-1">
         <AnimatePresence mode="wait">

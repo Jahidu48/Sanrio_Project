@@ -7,7 +7,6 @@ import {
   Gamepad2,
   Heart,
   MessageCircleHeart,
-  Palette,
   Settings2,
   Sparkles,
 } from "lucide-react";
@@ -83,7 +82,7 @@ export function DesktopSidebar({
   };
 
   return (
-    <aside className="hidden lg:flex lg:w-64 xl:w-68 shrink-0 flex-col justify-between border-r border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 p-5 transition-colors">
+    <aside className="hidden lg:flex lg:w-64 xl:w-68 shrink-0 flex-col justify-between border-r border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 p-5">
       <div className="space-y-6">
         {/* Lingora-Inspired Brand Header */}
         <div className="flex items-center gap-3 px-1">
@@ -118,7 +117,7 @@ export function DesktopSidebar({
                 key={item.id}
                 type="button"
                 onClick={() => handleTabClick(item.id)}
-                className={`relative flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left transition-all ${
+                className={`relative flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer ${
                   isActive
                     ? "text-[#0369A1] dark:text-sky-300 font-bold"
                     : "text-slate-500 dark:text-slate-400 hover:bg-slate-50/90 dark:hover:bg-slate-800 hover:text-[#1E293B] dark:hover:text-white font-medium"
@@ -127,7 +126,12 @@ export function DesktopSidebar({
                 {isActive && (
                   <motion.span
                     layoutId="lingora-sidebar-pill"
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 380,
+                      damping: 30,
+                      mass: 0.8,
+                    }}
                     className="absolute inset-0 rounded-2xl bg-[#E0F2FE]/85 dark:bg-sky-950/70 border border-sky-200/70 dark:border-sky-800"
                   />
                 )}
@@ -170,7 +174,7 @@ export function DesktopSidebar({
                       {notesCount}
                     </span>
                   )}
-                  {item.id === "canvas" && stampsCount > 0 && (
+                  {item.id === "playground" && stampsCount > 0 && (
                     <span className="rounded-full bg-rose-50 dark:bg-rose-950/60 border border-pink-100 dark:border-rose-900 px-2 py-0.5 text-[10px] font-semibold text-rose-500 dark:text-rose-300">
                       {stampsCount}
                     </span>
@@ -184,7 +188,6 @@ export function DesktopSidebar({
 
       {/* Bottom Cards: 19 Sanrio Avatar Card + Active Partner Profile */}
       <div className="space-y-3 pt-6">
-        {/* Lingora-Style Pastel Promo/Avatar Card */}
         <div className="relative overflow-hidden rounded-3xl border border-sky-100 dark:border-slate-800 bg-gradient-to-br from-[#EBF6FF] via-[#F5F9FF] to-[#FFF0F5] dark:from-slate-800/80 dark:via-purple-950/30 dark:to-slate-800/80 p-4">
           <div className="pointer-events-none absolute -right-4 -top-4 h-20 w-20 rounded-full bg-[#FECDD3]/40 blur-xl" />
           <div className="flex items-center gap-2 mb-1.5">
@@ -222,7 +225,7 @@ export function DesktopSidebar({
               playPop();
               onOpenCharacterModal();
             }}
-            className="w-full rounded-full bg-[#0284C7] dark:bg-purple-600 py-2 text-xs font-semibold text-white shadow-sm hover:opacity-90 transition-opacity"
+            className="w-full rounded-full bg-[#0284C7] dark:bg-purple-600 py-2 text-xs font-semibold text-white shadow-sm hover:opacity-90 active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer"
           >
             Pilih Karakter
           </button>
@@ -256,7 +259,7 @@ export function DesktopSidebar({
                 onOpenCharacterModal();
               }}
               aria-label="Pengaturan Pasangan"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-500 hover:border-pink-200 hover:text-[#1E293B] dark:hover:text-white transition-colors"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-500 hover:border-pink-200 hover:text-[#1E293B] dark:hover:text-white active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer"
             >
               <Settings2 className="h-3.5 w-3.5" />
             </button>
@@ -266,7 +269,7 @@ export function DesktopSidebar({
             <button
               type="button"
               onClick={() => onSwitchRole("user_a")}
-              className={`rounded-full py-1 font-semibold transition-all truncate px-2 ${
+              className={`rounded-full py-1 font-semibold truncate px-2 active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer ${
                 profile.role === "user_a"
                   ? "bg-[#BAE6FD]/80 text-[#1E293B] dark:bg-sky-900 dark:text-white"
                   : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white"
@@ -277,7 +280,7 @@ export function DesktopSidebar({
             <button
               type="button"
               onClick={() => onSwitchRole("user_b")}
-              className={`rounded-full py-1 font-semibold transition-all truncate px-2 ${
+              className={`rounded-full py-1 font-semibold truncate px-2 active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer ${
                 profile.role === "user_b"
                   ? "bg-[#FECDD3]/80 text-[#1E293B] dark:bg-pink-900 dark:text-white"
                   : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white"

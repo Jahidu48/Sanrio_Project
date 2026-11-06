@@ -48,6 +48,7 @@ export interface CoupleChatTabProps {
   messages: ChatMessage[];
   partnerTyping: ChatTypingStatus | null;
   bothPartnersOnline: boolean;
+  isActiveTab?: boolean;
   onSendMessage: (input: {
     type: ChatMessageType;
     text?: string;
@@ -72,6 +73,7 @@ export function CoupleChatTab({
   messages,
   partnerTyping,
   bothPartnersOnline,
+  isActiveTab = true,
   onSendMessage,
   onSendTyping,
   onAddReaction,
@@ -114,11 +116,30 @@ export function CoupleChatTab({
       ? getSanrioCharacter(profile.userACharacter, "cinnamoroll")
       : getSanrioCharacter(profile.userBCharacter, "my-melody");
 
-  // Scroll to bottom on new message
+  // Scroll to bottom on new message & mark read only when Chat tab is visible
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    onMarkRead();
-  }, [messages.length, onMarkRead]);
+    if (isActiveTab) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      if (typeof document === "undefined" || !document.hidden) {
+        onMarkRead();
+      }
+    }
+  }, [messages.length, isActiveTab, onMarkRead]);
+
+  useEffect(() => {
+    if (!isActiveTab) return;
+    const handleFocusRead = () => {
+      if (!document.hidden) {
+        onMarkRead();
+      }
+    };
+    window.addEventListener("focus", handleFocusRead);
+    document.addEventListener("visibilitychange", handleFocusRead);
+    return () => {
+      window.removeEventListener("focus", handleFocusRead);
+      document.removeEventListener("visibilitychange", handleFocusRead);
+    };
+  }, [isActiveTab, onMarkRead]);
 
   // Clean up audio on unmount
   useEffect(() => {

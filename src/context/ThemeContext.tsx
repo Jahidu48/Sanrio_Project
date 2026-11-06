@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 
 export type ThemeMode = "light" | "dark";
 
@@ -26,7 +27,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+      const saved = window.localStorage.getItem(
+        THEME_STORAGE_KEY
+      ) as ThemeMode | null;
       if (saved === "dark" || saved === "light") {
         setThemeState(saved);
         if (saved === "dark") {
@@ -34,7 +37,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         } else {
           document.documentElement.classList.remove("dark");
         }
-      } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      } else if (
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches
+      ) {
         setThemeState("dark");
         document.documentElement.classList.add("dark");
       }
@@ -44,7 +50,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setMounted(true);
   }, []);
 
-  const setTheme = (next: ThemeMode) => {
+  const applyThemeImmediate = (next: ThemeMode) => {
     setThemeState(next);
     try {
       window.localStorage.setItem(THEME_STORAGE_KEY, next);
@@ -56,6 +62,26 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     }
+  };
+
+  const setTheme = (next: ThemeMode) => {
+    if (
+      typeof document !== "undefined" &&
+      "startViewTransition" in document &&
+      typeof (document as any).startViewTransition === "function"
+    ) {
+      try {
+        (document as any).startViewTransition(() => {
+          flushSync(() => {
+            applyThemeImmediate(next);
+          });
+        });
+        return;
+      } catch {
+        // Fallback if View Transition aborted
+      }
+    }
+    applyThemeImmediate(next);
   };
 
   const toggleTheme = () => {

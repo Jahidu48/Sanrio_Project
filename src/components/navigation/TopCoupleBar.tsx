@@ -1,28 +1,23 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import React, { useEffect, useState } from "react";
 import {
   Battery,
   BatteryCharging,
   Bell,
+  BellOff,
   BellRing,
   Disc3,
   Flame,
   Gem,
   Moon,
-  Music,
   Pause,
   Play,
   QrCode,
   Radio,
-  RotateCcw,
   Settings2,
-  Smartphone,
+  ShieldCheck,
   Sun,
-  Upload,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
 import { getSanrioCharacter } from "@/lib/sanrioCharacters";
 import { useTheme } from "@/context/ThemeContext";
@@ -75,9 +70,7 @@ export function TopCoupleBar({
     togglePlayPause: toggleSharedPlayPause,
     currentTime: sharedCurrentTime,
   } = useSharedMusic();
-  const {
-    playPop,
-  } = useAudio();
+  const { playPop } = useAudio();
 
   const charA = getSanrioCharacter(profile.userACharacter, "cinnamoroll");
   const charB = getSanrioCharacter(profile.userBCharacter, "my-melody");
@@ -95,30 +88,31 @@ export function TopCoupleBar({
 
     let mounted = true;
     let batteryObj: any = null;
+    let updateHandler: (() => void) | null = null;
 
     nav
       .getBattery()
       .then((battery: any) => {
         if (!mounted) return;
         batteryObj = battery;
-        const update = () => {
+        updateHandler = () => {
           setBatteryInfo({
             level: Math.round(battery.level * 100),
             charging: Boolean(battery.charging),
           });
         };
-        update();
-        battery.addEventListener("levelchange", update);
-        battery.addEventListener("chargingchange", update);
+        updateHandler();
+        battery.addEventListener("levelchange", updateHandler);
+        battery.addEventListener("chargingchange", updateHandler);
       })
       .catch(() => {});
 
     return () => {
       mounted = false;
-      if (batteryObj) {
+      if (batteryObj && updateHandler) {
         try {
-          batteryObj.removeEventListener("levelchange", null);
-          batteryObj.removeEventListener("chargingchange", null);
+          batteryObj.removeEventListener("levelchange", updateHandler);
+          batteryObj.removeEventListener("chargingchange", updateHandler);
         } catch {
           // ignore
         }
@@ -131,7 +125,8 @@ export function TopCoupleBar({
     onUpdateProfile({ ...profile, role });
   };
 
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>("default");
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermissionState>("default");
 
   useEffect(() => {
     const updatePerm = () => {
@@ -139,29 +134,48 @@ export function TopCoupleBar({
     };
     updatePerm();
     window.addEventListener("focus", updatePerm);
-    return () => window.removeEventListener("focus", updatePerm);
+    window.addEventListener("sanrio-notification-perm-changed", updatePerm);
+    return () => {
+      window.removeEventListener("focus", updatePerm);
+      window.removeEventListener(
+        "sanrio-notification-perm-changed",
+        updatePerm
+      );
+    };
   }, []);
 
-  const handleToggleNotification = async () => {
+  // Tier 3 Explicit Permission Bell: directly invokes Notification.requestPermission() on click
+  const handleBellClick = async () => {
     playPop();
+
+    const currentPerm = getNotificationPermission();
+    setNotificationPermission(currentPerm);
+
+    if (currentPerm === "default") {
+      const result = await requestNotificationPermission();
+      setNotificationPermission(result);
+      if (result === "granted") {
+        sendDeviceNotification("Notifikasi Berhasil Diaktifkan! 🔔💖", {
+          body: "Laptop & HP kamu siap menerima chat, panggilan masuk, mood, dan detak rindu!",
+          tabTitleAlert: "🔔 Notifikasi Aktif! - Sanrio Couple",
+        });
+      } else if (result === "denied" && onOpenPermissionsModal) {
+        onOpenPermissionsModal();
+      }
+      return;
+    }
+
+    if (currentPerm === "granted") {
+      sendDeviceNotification("Tes Notifikasi Lintas Perangkat 🔔✨", {
+        body: "Sistem notifikasi OS + Banner + Suara aktif dengan sempurna di perangkat ini!",
+        tabTitleAlert: "🔔 Tes Notifikasi Berhasil! - Sanrio Couple",
+      });
+      return;
+    }
+
+    // If denied or unsupported, open Device Permissions Hub for guided unlock
     if (onOpenPermissionsModal) {
       onOpenPermissionsModal();
-      return;
-    }
-    if (notificationPermission === "granted") {
-      sendDeviceNotification("Tes Notifikasi Berhasil! 🔔💖", {
-        body: "Perangkat ini siap menerima kabar saat pasangan masuk web, chat, atau detak rindu!",
-      });
-      return;
-    }
-    const res = await requestNotificationPermission();
-    setNotificationPermission(res);
-    if (res === "granted") {
-      sendDeviceNotification("Notifikasi Berhasil Diaktifkan! 🔔✨", {
-        body: "Sekarang kamu dan pasangan akan selalu terhubung di HP & Laptop!",
-      });
-    } else if (res === "denied") {
-      alert("Izin notifikasi diblokir di browser. Buka pengaturan browser (ikon gembok 🔒 di bilah URL) lalu pilih 'Izinkan notifikasi'!");
     }
   };
 
@@ -171,13 +185,17 @@ export function TopCoupleBar({
   };
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 transition-colors">
+    <header className="sticky top-0 z-30 w-full bg-white/88 dark:bg-slate-900/88 backdrop-blur-md border-b border-slate-100 dark:border-slate-800">
       <div className="flex flex-wrap items-center justify-between gap-2 p-3 sm:px-4 sm:py-2.5">
         {/* Mobile Brand / Desktop Room Status Pill */}
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="flex lg:hidden h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#BAE6FD]/60 via-white to-[#FECDD3]/60 dark:from-purple-900/40 dark:via-slate-800 dark:to-slate-900 border border-pink-100 dark:border-purple-800 shadow-sm">
             <img
-              src={isDark ? "/characters/kuromi.svg" : "/characters/cinnamoroll.svg"}
+              src={
+                isDark
+                  ? "/characters/kuromi.svg"
+                  : "/characters/cinnamoroll.svg"
+              }
               alt="Mascot"
               className="h-7 w-7 object-contain"
             />
@@ -228,15 +246,15 @@ export function TopCoupleBar({
               }
             >
               {bothPartnersOnline
-                ? "Pasangan Online Bersama 💖"
+                ? "Sedang Online Bersama 💖"
                 : "Siap Sinkronisasi 2-Arah"}
             </span>
           </div>
         </div>
 
-        {/* Right Section: Theme Switcher, BGM Player, Stats & Profile */}
-        <div className="flex items-center gap-2 sm:gap-2.5">
-          {/* 2-WAY SYNCHRONIZED SHARED MUSIC BAR (LISTEN TOGETHER) */}
+        {/* Right Section: Shared Music, Theme Switcher, Role, Pairing, Bell & Settings */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* 2-WAY SYNCHRONIZED SHARED MUSIC BAR */}
           {onOpenSharedMusicModal && (
             <div className="inline-flex items-center rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-pink-200/80 dark:border-slate-700 p-0.5 shadow-xs">
               <button
@@ -245,7 +263,7 @@ export function TopCoupleBar({
                   playPop();
                   onOpenSharedMusicModal();
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer ${
                   isSharedPlaying
                     ? "bg-pink-100 text-rose-700 dark:bg-purple-950/80 dark:text-pink-300"
                     : "text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white"
@@ -254,13 +272,15 @@ export function TopCoupleBar({
               >
                 <Disc3
                   className={`h-3.5 w-3.5 text-pink-500 ${
-                    isSharedPlaying ? "animate-spin [animation-duration:3s]" : ""
+                    isSharedPlaying
+                      ? "animate-spin [animation-duration:3s]"
+                      : ""
                   }`}
                 />
                 <span className="hidden md:inline max-w-[110px] truncate text-[11px] font-bold">
                   {currentTrack?.title || "Playlist Bersama"}
                 </span>
-                <span className="text-[10px] text-slate-400 dark:text-slate-400 font-mono">
+                <span className="text-[10px] text-slate-400 font-mono">
                   {formatMinSec(sharedCurrentTime)}
                 </span>
               </button>
@@ -272,8 +292,10 @@ export function TopCoupleBar({
                   playPop();
                   toggleSharedPlayPause();
                 }}
-                className="p-1 rounded-full text-slate-400 hover:text-rose-500 dark:hover:text-pink-300 cursor-pointer"
-                title={isSharedPlaying ? "Jeda Lagu Bersama" : "Putar Lagu Bersama"}
+                className="p-1 rounded-full text-slate-400 hover:text-rose-500 dark:hover:text-pink-300 active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer"
+                title={
+                  isSharedPlaying ? "Jeda Lagu Bersama" : "Putar Lagu Bersama"
+                }
               >
                 {isSharedPlaying ? (
                   <Pause className="h-3.5 w-3.5 fill-rose-500 text-rose-500" />
@@ -284,12 +306,11 @@ export function TopCoupleBar({
             </div>
           )}
 
-          {/* ANIMATED THEME SWITCHER TOGGLE (Light: Day Cloud / Dark: Kuromi Midnight) */}
-          <motion.button
+          {/* INSTANT VIEW-TRANSITION THEME SWITCHER */}
+          <button
             type="button"
-            whileTap={{ scale: 0.94 }}
             onClick={handleToggleTheme}
-            className="flex items-center gap-1.5 rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-pink-100 dark:border-slate-700 p-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-pink-200 transition-all shadow-xs"
+            className="flex items-center gap-1.5 rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-pink-100 dark:border-slate-700 p-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-pink-200 shadow-xs active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer"
             title={
               isDark
                 ? "Ganti ke Tema Siang (Day Cloud Cinnamoroll ☀️)"
@@ -317,7 +338,7 @@ export function TopCoupleBar({
                 <Sun className="h-3 w-3 fill-amber-400 text-amber-500" />
               )}
             </span>
-          </motion.button>
+          </button>
 
           {/* Streak Badge */}
           <div
@@ -342,7 +363,7 @@ export function TopCoupleBar({
             <button
               type="button"
               onClick={() => switchRole("user_a")}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold transition-all ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer ${
                 profile.role === "user_a"
                   ? "bg-[#BAE6FD]/80 text-[#1E293B] dark:bg-sky-900 dark:text-white shadow-sm"
                   : "text-slate-400 hover:text-slate-600 dark:text-slate-500"
@@ -353,12 +374,12 @@ export function TopCoupleBar({
                 alt={charA.name}
                 className="h-4 w-4 object-contain"
               />
-              <span className="max-w-[62px] truncate">{profile.userAName}</span>
+              <span className="max-w-[58px] truncate">{profile.userAName}</span>
             </button>
             <button
               type="button"
               onClick={() => switchRole("user_b")}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold transition-all ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer ${
                 profile.role === "user_b"
                   ? "bg-[#FECDD3]/80 text-[#1E293B] dark:bg-pink-900 dark:text-white shadow-sm"
                   : "text-slate-400 hover:text-slate-600 dark:text-slate-500"
@@ -369,7 +390,7 @@ export function TopCoupleBar({
                 alt={charB.name}
                 className="h-4 w-4 object-contain"
               />
-              <span className="max-w-[62px] truncate">{profile.userBName}</span>
+              <span className="max-w-[58px] truncate">{profile.userBName}</span>
             </button>
           </div>
 
@@ -380,14 +401,14 @@ export function TopCoupleBar({
               playPop();
               onOpenPairingModal?.();
             }}
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold transition-all shadow-xs cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold shadow-xs active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer ${
               bothPartnersOnline
                 ? "bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300"
-                : "bg-pink-100/90 dark:bg-pink-950/60 border border-pink-300 dark:border-pink-800 text-pink-700 dark:text-pink-300 animate-pulse"
+                : "bg-pink-100/90 dark:bg-pink-950/60 border border-pink-300 dark:border-pink-800 text-pink-700 dark:text-pink-300"
             }`}
             title={
               bothPartnersOnline
-                ? "Berdua Terhubung (2 Perangkat Sinkron)"
+                ? "Sedang Online Bersama (2 Perangkat Sinkron)"
                 : "Hubungkan HP Pasangan (Scan QR Code)"
             }
           >
@@ -397,15 +418,17 @@ export function TopCoupleBar({
               <QrCode className="h-3.5 w-3.5" />
             )}
             <span className="hidden sm:inline">
-              {bothPartnersOnline ? "Berdua Online 🟢" : "Hubungkan HP 📱"}
+              {bothPartnersOnline ? "Sedang Online 🟢" : "Hubungkan HP 📱"}
             </span>
           </button>
 
           {/* Real-time Battery Status Indicator */}
           {batteryInfo && (
             <div
-              className="inline-flex items-center gap-1 rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 px-2 py-1 text-[11px] font-mono text-slate-600 dark:text-slate-300 shadow-2xs"
-              title={`Status Baterai: ${batteryInfo.level}% ${batteryInfo.charging ? "(Sedang Mengisi Daya ⚡)" : ""}`}
+              className="hidden sm:inline-flex items-center gap-1 rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 px-2 py-1 text-[11px] font-mono text-slate-600 dark:text-slate-300 shadow-2xs"
+              title={`Status Baterai: ${batteryInfo.level}% ${
+                batteryInfo.charging ? "(Sedang Mengisi Daya ⚡)" : ""
+              }`}
             >
               {batteryInfo.charging ? (
                 <BatteryCharging className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
@@ -422,32 +445,56 @@ export function TopCoupleBar({
             </div>
           )}
 
-          {/* Device Push Notification Toggle Button */}
+          {/* Tier 3: Notification Permission Bell & Instant Test Trigger */}
           <button
             type="button"
-            onClick={handleToggleNotification}
+            onClick={handleBellClick}
             aria-label="Notifikasi Perangkat HP / Laptop"
             title={
               notificationPermission === "granted"
-                ? "Notifikasi Perangkat Aktif 🔔 (Klik untuk tes)"
+                ? "Notifikasi Aktif 🔔 (Klik untuk tes notifikasi)"
                 : notificationPermission === "denied"
-                ? "Izin Notifikasi Diblokir di Browser (Klik untuk info)"
-                : "Aktifkan Notifikasi Perangkat (Pasangan masuk web, chat, dll)"
+                ? "Izin Notifikasi Diblokir (Klik untuk panduan mengaktifkan)"
+                : "Klik untuk Mengaktifkan Izin Notifikasi HP & Laptop"
             }
-            className={`flex h-8 w-8 items-center justify-center rounded-full border transition-all ${
+            className={`relative flex h-8 w-8 items-center justify-center rounded-full border active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer ${
               notificationPermission === "granted"
                 ? "bg-pink-50 dark:bg-pink-950/40 border-pink-300 dark:border-pink-800 text-pink-600 dark:text-pink-300 shadow-2xs"
-                : "bg-[#F8FAFC] dark:bg-slate-800 border-slate-200/80 dark:border-slate-700 text-slate-400 hover:text-pink-500 hover:border-pink-300"
+                : notificationPermission === "denied"
+                ? "bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-500"
+                : "bg-[#F8FAFC] dark:bg-slate-800 border-amber-300 dark:border-amber-700 text-amber-500 hover:text-pink-500"
             }`}
           >
             {notificationPermission === "granted" ? (
-              <BellRing className="h-3.5 w-3.5 animate-pulse text-pink-500" />
+              <BellRing className="h-3.5 w-3.5 text-pink-500" />
+            ) : notificationPermission === "denied" ? (
+              <BellOff className="h-3.5 w-3.5 text-rose-500" />
             ) : (
-              <Bell className="h-3.5 w-3.5" />
+              <>
+                <Bell className="h-3.5 w-3.5" />
+                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 border border-white dark:border-slate-900 animate-ping" />
+                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 border border-white dark:border-slate-900" />
+              </>
             )}
           </button>
 
-          {/* Settings Modal Button */}
+          {/* Device Hardware Permissions Hub Button (Mic, Camera, GPS, Notif) */}
+          {onOpenPermissionsModal && (
+            <button
+              type="button"
+              onClick={() => {
+                playPop();
+                onOpenPermissionsModal();
+              }}
+              aria-label="Pusat Izin Kamera, Mikrofon, GPS & Notifikasi"
+              title="Cek Izin Kamera, Mikrofon, GPS & Notifikasi"
+              className="hidden sm:flex h-8 w-8 items-center justify-center rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-500 hover:border-pink-200 dark:hover:border-purple-600 hover:text-[#1E293B] dark:hover:text-white active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer"
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+            </button>
+          )}
+
+          {/* Settings & 19 Sanrio Character Modal Button */}
           <button
             type="button"
             onClick={() => {
@@ -456,7 +503,7 @@ export function TopCoupleBar({
             }}
             aria-label="Pengaturan Pasangan & 19 Karakter Sanrio"
             title="Pilih dari 19 Karakter Sanrio & Ubah Profil"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-500 hover:border-pink-200 dark:hover:border-purple-600 hover:text-[#1E293B] dark:hover:text-white transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-500 hover:border-pink-200 dark:hover:border-purple-600 hover:text-[#1E293B] dark:hover:text-white active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer"
           >
             <Settings2 className="h-3.5 w-3.5" />
           </button>

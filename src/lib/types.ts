@@ -131,15 +131,26 @@ export interface ChatTypingStatus {
 
 export type WebRTCCallType = "audio" | "video";
 
+export type WebRTCSignalType =
+  | "call-offer"
+  | "call-ringing-ack"
+  | "call-answer"
+  | "call-ice"
+  | "call-reject"
+  | "call-end"
+  | "call-busy";
+
 export interface WebRTCSignalMessage {
   id: string;
+  call_id?: string;
   room_id: string;
-  type: "call-offer" | "call-answer" | "call-ice" | "call-reject" | "call-end";
+  type: WebRTCSignalType;
   caller_role: PartnerRole;
   caller_name: string;
   call_type: WebRTCCallType;
   sdp?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit;
+  is_renegotiation?: boolean;
   timestamp: number;
 }
 
