@@ -165,16 +165,33 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     }, []);
 
     // ------------------------------------------------------------------------
-    // 2. SUPABASE REALTIME & CROSS-TAB BROADCAST CHANNEL SETUP + AUTO-HANDSHAKE
+    // 2. SUPABASE REALTIME & CROSS-TAB BROADCAST CHANNEL SETUP
     // ------------------------------------------------------------------------
     const storageKey = `${STORAGE_ROOM_KEY}:${profile.roomId}`;
 
-    // Broadcast state out
+    // Broadcast state out (attaches exact live track offset to eliminate PC/Phone clock skew)
     const broadcastState = useCallback(
       (nextStateInput: MusicRoomState) => {
+        const now = Date.now();
+        const computedTrackOffset = nextStateInput.isPlaying
+          ? Math.max(
+              0,
+              (nextStateInput.pausedAtSeconds || 0) +
+                Math.max(
+                  0,
+                  now - (nextStateInput.startedAtServerTime || now)
+                ) /
+                  1000
+            )
+          : nextStateInput.pausedAtSeconds || 0;
+
         const nextState: MusicRoomState = {
           ...nextStateInput,
-          updatedAt: nextStateInput.updatedAt || Date.now(),
+          sentAtTrackSeconds:
+            typeof nextStateInput.sentAtTrackSeconds === "number"
+              ? nextStateInput.sentAtTrackSeconds
+              : computedTrackOffset,
+          updatedAt: nextStateInput.updatedAt || now,
           queue: Array.isArray(nextStateInput.queue) ? nextStateInput.queue : [],
         };
 
@@ -199,7 +216,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           payload: nextState,
         });
 
-        // 3. Network SSE Hub Broadcast (cross-device sync across phone & PC)
+        // Network SSE Hub Broadcast (cross-device sync across phone & PC)
         if (typeof window !== "undefined") {
           fetch("/api/realtime-sync", {
             method: "POST",
@@ -226,7 +243,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               paused_at_seconds: nextState.pausedAtSeconds,
               updated_by: nextState.updatedBy,
               queue: nextState.queue || [],
-              updated_at: new Date(nextState.updatedAt || Date.now()).toISOString(),
+              updated_at: new Date(now).toISOString(),
             })
           ).catch(() => {});
         }
@@ -235,32 +252,32 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     );
 
     // ------------------------------------------------------------------------
-    // 3. REMOTE STATE REACTION (WITH LAST-WRITE-WINS TIMESTAMP PROTECTION)
+    // 3. REMOTE STATE REACTION (OPTIMAL DISCORD JOCKIE ZERO-BUFFERING ENGINE)
     // ------------------------------------------------------------------------
     const handleRemoteStateUpdate = useCallback(
       (remote: MusicRoomState) => {
         if (!remote || !remote.videoId) return;
 
-        const localUpdatedAt = roomStateRef.current.updatedAt ?? 0;
-        const remoteUpdatedAt = remote.updatedAt ?? 0;
-
-        // Ignore stale or unedited default payloads if this device has a newer track
-        if (localUpdatedAt > 0 && remoteUpdatedAt === 0) return;
-        if (
-          localUpdatedAt > 0 &&
-          remoteUpdatedAt > 0 &&
-          remoteUpdatedAt < localUpdatedAt
-        ) {
-          return;
-        }
+        // Re-anchor live packets to receiver's own Date.now() so system clock skew = 0.00s
+        const now = Date.now();
+        const hasLiveTrackOffset =
+          typeof remote.sentAtTrackSeconds === "number" &&
+          !isNaN(remote.sentAtTrackSeconds);
 
         const normalized: MusicRoomState = {
           ...remote,
-          updatedAt: remoteUpdatedAt || Date.now(),
+          pausedAtSeconds:
+            remote.isPlaying && hasLiveTrackOffset
+              ? Math.max(0, remote.sentAtTrackSeconds!)
+              : remote.pausedAtSeconds || 0,
+          startedAtServerTime:
+            remote.isPlaying && hasLiveTrackOffset
+              ? now
+              : remote.startedAtServerTime || now,
+          updatedAt: now,
           queue: Array.isArray(remote.queue) ? remote.queue : [],
         };
 
-        const prevVid = roomStateRef.current.videoId;
         roomStateRef.current = normalized;
         setRoomState(normalized);
         onRoomStateChange?.(normalized);
@@ -271,10 +288,8 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           // ignore
         }
 
-        if (normalized.isPlaying) {
-          // Stop local background MP3 so they don't clash
-          pauseLocalBgm();
-        }
+        // Stop local background MP3 so they don't clash
+        pauseLocalBgm();
 
         const player = playerRef.current;
         if (!player || !isPlayerInitializedRef.current) {
@@ -286,8 +301,22 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           const currentVideoData = player.getVideoData
             ? player.getVideoData()
             : null;
-          const currentVid = currentVideoData?.video_id || prevVid;
-          const videoChanged = currentVid !== normalized.videoId;
+          const currentVid = currentVideoData?.video_id;
+
+          if (currentVid && currentVid !== normalized.videoId) {
+            const initialStartSec =
+              normalized.pausedAtSeconds > 1.5 ? normalized.pausedAtSeconds : 0;
+            player.loadVideoById(normalized.videoId, initialStartSec);
+            if (normalized.isPlaying) {
+              const playPromise = player.playVideo?.();
+              if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch(() => setNeedsUnlock(true));
+              }
+            } else {
+              player.pauseVideo?.();
+            }
+            return;
+          }
 
           if (normalized.isPlaying) {
             const targetTime = Math.max(
@@ -295,34 +324,29 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               normalized.pausedAtSeconds +
                 (Date.now() - normalized.startedAtServerTime) / 1000
             );
+            const currentPos = player.getCurrentTime
+              ? player.getCurrentTime()
+              : 0;
+            const drift = Math.abs(currentPos - targetTime);
+            const state =
+              typeof player.getPlayerState === "function"
+                ? player.getPlayerState()
+                : -1;
 
-            if (videoChanged) {
-              player.loadVideoById?.(normalized.videoId, targetTime);
-            } else {
-              const currentPos = player.getCurrentTime
-                ? player.getCurrentTime()
-                : 0;
-              const drift = Math.abs(currentPos - targetTime);
-              const state =
-                typeof player.getPlayerState === "function"
-                  ? player.getPlayerState()
-                  : -1;
-
-              // DISCORD JOCKIE ARCHITECTURE:
-              // Never seek while playing smoothly or buffering!
-              if (state !== 1 && state !== 3) {
-                player.seekTo?.(targetTime, true);
-              } else if (drift > 10 && state !== 3) {
-                player.seekTo?.(targetTime, true);
-              } else if (drift > 1.5 && drift <= 6) {
-                const rate = currentPos < targetTime ? 1.05 : 0.95;
-                player.setPlaybackRate?.(rate);
-                window.setTimeout(() => {
-                  if (playerRef.current?.setPlaybackRate) {
-                    playerRef.current.setPlaybackRate(1.0);
-                  }
-                }, 3000);
-              }
+            // DISCORD JOCKIE ARCHITECTURE:
+            // Never seek while playing smoothly or buffering!
+            if (state !== 1 && state !== 3) {
+              player.seekTo?.(targetTime, true);
+            } else if (drift > 10 && state !== 3) {
+              player.seekTo?.(targetTime, true);
+            } else if (drift > 1.5 && drift <= 6) {
+              const rate = currentPos < targetTime ? 1.05 : 0.95;
+              player.setPlaybackRate?.(rate);
+              window.setTimeout(() => {
+                if (playerRef.current?.setPlaybackRate) {
+                  playerRef.current.setPlaybackRate(1.0);
+                }
+              }, 3000);
             }
 
             const playPromise = player.playVideo?.();
@@ -330,23 +354,8 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
               playPromise.catch(() => setNeedsUnlock(true));
             }
           } else {
-            if (videoChanged) {
-              if (typeof player.cueVideoById === "function") {
-                player.cueVideoById(
-                  normalized.videoId,
-                  normalized.pausedAtSeconds || 0
-                );
-              } else {
-                player.loadVideoById?.(
-                  normalized.videoId,
-                  normalized.pausedAtSeconds || 0
-                );
-                player.pauseVideo?.();
-              }
-            } else {
-              player.pauseVideo?.();
-              player.seekTo?.(normalized.pausedAtSeconds || 0, true);
-            }
+            player.pauseVideo?.();
+            player.seekTo?.(normalized.pausedAtSeconds, true);
           }
         } catch {
           setNeedsUnlock(true);
@@ -355,28 +364,24 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
       [onRoomStateChange, pauseLocalBgm, storageKey]
     );
 
+    const handleRemoteStateUpdateRef = useRef(handleRemoteStateUpdate);
+    handleRemoteStateUpdateRef.current = handleRemoteStateUpdate;
+
     useEffect(() => {
       const channelName = `music-room:${profile.roomId}`;
+      const currentStorageKey = `${STORAGE_ROOM_KEY}:${profile.roomId}`;
       const supabase = getSupabaseBrowserClient();
 
-      // Restore room-scoped saved state on mount BEFORE subscribing so handshake knows localUpdatedAt
+      // Restore saved state from room-scoped localStorage on mount
       try {
-        const savedScoped = window.localStorage.getItem(storageKey);
-        const savedLegacy = !savedScoped
-          ? window.localStorage.getItem(STORAGE_ROOM_KEY)
-          : null;
-        const raw = savedScoped || savedLegacy;
-        if (raw) {
-          const parsed = JSON.parse(raw);
+        const saved =
+          window.localStorage.getItem(currentStorageKey) ||
+          window.localStorage.getItem(STORAGE_ROOM_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
           if (parsed && parsed.videoId) {
             const hydrated: MusicRoomState = {
               ...parsed,
-              updatedAt:
-                typeof parsed.updatedAt === "number"
-                  ? parsed.updatedAt
-                  : savedScoped
-                  ? 1
-                  : 0,
               queue: Array.isArray(parsed.queue) ? parsed.queue : [],
             };
             roomStateRef.current = hydrated;
@@ -387,77 +392,59 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
         // ignore
       }
 
-      const replyIfLocalNewer = (peerUpdatedAt = 0) => {
+      const replyActivePlaybackOnly = () => {
         const current = roomStateRef.current;
-        const myUpdatedAt = current.updatedAt ?? 0;
-        if (myUpdatedAt > 0 && myUpdatedAt >= peerUpdatedAt) {
-          channelRef.current?.send({
-            type: "broadcast",
-            event: "jockie-sync",
-            payload: current,
-          });
-          localBroadcastRef.current?.postMessage({
-            type: "jockie-sync",
-            payload: current,
-          });
-        }
+        if (!current.isPlaying || !current.videoId) return;
+        const player = playerRef.current;
+        const liveSec =
+          player && typeof player.getCurrentTime === "function"
+            ? player.getCurrentTime()
+            : Math.max(
+                0,
+                current.pausedAtSeconds +
+                  (Date.now() - current.startedAtServerTime) / 1000
+              );
+        const livePacket: MusicRoomState = {
+          ...current,
+          pausedAtSeconds: liveSec,
+          startedAtServerTime: Date.now(),
+          sentAtTrackSeconds: liveSec,
+          updatedAt: Date.now(),
+        };
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "jockie-sync",
+          payload: livePacket,
+        });
+        localBroadcastRef.current?.postMessage({
+          type: "jockie-sync",
+          payload: livePacket,
+        });
       };
 
       if (typeof window !== "undefined" && "BroadcastChannel" in window) {
         localBroadcastRef.current = new BroadcastChannel(channelName);
         localBroadcastRef.current.onmessage = (event) => {
           if (event.data?.type === "jockie-sync" && event.data.payload) {
-            handleRemoteStateUpdate(event.data.payload);
-          } else if (event.data?.type === "jockie-request-state") {
-            replyIfLocalNewer(event.data?.localUpdatedAt || 0);
+            handleRemoteStateUpdateRef.current(event.data.payload);
+          } else if (event.data?.type === "jockie-join-query") {
+            replyActivePlaybackOnly();
           }
         };
-        localBroadcastRef.current.postMessage({
-          type: "jockie-request-state",
-          localUpdatedAt: roomStateRef.current.updatedAt || 0,
-        });
       }
 
       if (supabase) {
-        // Fetch persisted row if music_room_state table exists
-        Promise.resolve(
-          supabase
-            .from("music_room_state")
-            .select("*")
-            .eq("room_id", profile.roomId)
-            .maybeSingle()
-        )
-          .then(({ data: row }) => {
-            if (row && row.video_id) {
-              const rowTime = row.updated_at
-                ? new Date(row.updated_at).getTime()
-                : 1;
-              handleRemoteStateUpdate({
-                videoId: row.video_id,
-                url: row.url,
-                title: row.title,
-                isPlaying: row.is_playing,
-                startedAtServerTime: Number(row.started_at_server_time),
-                pausedAtSeconds: Number(row.paused_at_seconds),
-                updatedBy: row.updated_by,
-                updatedAt: isNaN(rowTime) ? 1 : rowTime,
-                queue: Array.isArray(row.queue) ? row.queue : [],
-              });
-            }
-          })
-          .catch(() => {});
-
         const ch = supabase.channel(channelName, {
           config: { broadcast: { self: false } },
         });
 
         ch.on("broadcast", { event: "jockie-sync" }, ({ payload }) => {
           if (payload) {
-            handleRemoteStateUpdate(payload);
+            handleRemoteStateUpdateRef.current(payload);
           }
         })
-          .on("broadcast", { event: "jockie-request-state" }, ({ payload }) => {
-            replyIfLocalNewer(payload?.localUpdatedAt || 0);
+          .on("broadcast", { event: "jockie-join-query" }, () => {
+            replyActivePlaybackOnly();
           })
           .on(
             "postgres_changes",
@@ -470,10 +457,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
             (payload: any) => {
               if (payload.new) {
                 const row = payload.new;
-                const rowTime = row.updated_at
-                  ? new Date(row.updated_at).getTime()
-                  : Date.now();
-                handleRemoteStateUpdate({
+                handleRemoteStateUpdateRef.current({
                   videoId: row.video_id,
                   url: row.url,
                   title: row.title,
@@ -481,49 +465,25 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
                   startedAtServerTime: Number(row.started_at_server_time),
                   pausedAtSeconds: Number(row.paused_at_seconds),
                   updatedBy: row.updated_by,
-                  updatedAt: isNaN(rowTime) ? Date.now() : rowTime,
                   queue: Array.isArray(row.queue) ? row.queue : [],
                 });
               }
             }
           )
           .subscribe((status) => {
-            if (status === "SUBSCRIBED") {
+            if (status === "SUBSCRIBED" && !roomStateRef.current.isPlaying) {
               ch.send({
                 type: "broadcast",
-                event: "jockie-request-state",
-                payload: {
-                  requesterRole: profile.role,
-                  localUpdatedAt: roomStateRef.current.updatedAt || 0,
-                },
+                event: "jockie-join-query",
+                payload: { joinedAt: Date.now() },
               });
-              if ((roomStateRef.current.updatedAt || 0) > 0) {
-                ch.send({
-                  type: "broadcast",
-                  event: "jockie-sync",
-                  payload: roomStateRef.current,
-                });
-              }
             }
           });
 
         channelRef.current = ch;
       }
 
-      const handleFocusSync = () => {
-        channelRef.current?.send({
-          type: "broadcast",
-          event: "jockie-request-state",
-          payload: {
-            requesterRole: profile.role,
-            localUpdatedAt: roomStateRef.current.updatedAt || 0,
-          },
-        });
-      };
-      window.addEventListener("focus", handleFocusSync);
-
       return () => {
-        window.removeEventListener("focus", handleFocusSync);
         if (channelRef.current) {
           channelRef.current.unsubscribe();
         }
@@ -531,7 +491,7 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           localBroadcastRef.current.close();
         }
       };
-    }, [profile.roomId, profile.role, storageKey, handleRemoteStateUpdate]);
+    }, [profile.roomId]);
 
     // ------------------------------------------------------------------------
     // 4. ON ENDED HANDLER (AUTO-PLAY NEXT IN QUEUE OR CLEAN RESET)
@@ -627,7 +587,10 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
                     latest.pausedAtSeconds +
                       (Date.now() - latest.startedAtServerTime) / 1000
                   );
-                  event.target.loadVideoById(vid, targetTime);
+                  event.target.loadVideoById(
+                    vid,
+                    targetTime > 1.5 ? targetTime : 0
+                  );
                   event.target.playVideo();
                 } else if (typeof event.target.cueVideoById === "function") {
                   event.target.cueVideoById(vid, latest.pausedAtSeconds || 0);
@@ -641,7 +604,9 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
                   latest.pausedAtSeconds +
                     (Date.now() - latest.startedAtServerTime) / 1000
                 );
-                event.target.seekTo(targetTime, true);
+                if (targetTime > 1.5) {
+                  event.target.seekTo(targetTime, true);
+                }
                 event.target.playVideo();
               }
             },
@@ -865,30 +830,49 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           return `▶️ [Jockie Music Bot] Melanjutkan pemutaran musik oleh ${senderName}.`;
         }
 
-        // 5. COMMAND: !sync
+        // 5. COMMAND: !sync (Zero-buffer host anchor: never flush smooth local playback!)
         if (cmd === "!sync" || cmd === "sync") {
-          const targetTime =
-            roomState.pausedAtSeconds +
-            (roomState.isPlaying
-              ? (Date.now() - roomState.startedAtServerTime) / 1000
-              : 0);
+          const playerState =
+            player && typeof player.getPlayerState === "function"
+              ? player.getPlayerState()
+              : -1;
+          const livePlayerPos =
+            player && typeof player.getCurrentTime === "function"
+              ? player.getCurrentTime()
+              : 0;
 
-          if (player && player.seekTo) {
-            player.seekTo(targetTime, true);
+          const anchorTime =
+            playerState === 1 && livePlayerPos > 0
+              ? livePlayerPos
+              : Math.max(
+                  0,
+                  roomState.pausedAtSeconds +
+                    (roomState.isPlaying
+                      ? (Date.now() - roomState.startedAtServerTime) / 1000
+                      : 0)
+                );
+
+          // Only seek locally if this player is NOT already smoothly playing
+          if (player && playerState !== 1 && playerState !== 3) {
+            player.seekTo?.(anchorTime, true);
             if (roomState.isPlaying) {
               player.unMute?.();
-              player.playVideo();
+              player.playVideo?.();
             }
           }
 
+          const now = Date.now();
           broadcastState({
             ...roomState,
-            updatedAt: Date.now(),
+            pausedAtSeconds: anchorTime,
+            startedAtServerTime: now,
+            sentAtTrackSeconds: anchorTime,
+            updatedAt: now,
             updatedBy: `${senderName} (Forced Sync)`,
           });
 
           return `🔄 [Jockie Music Bot] Sinkronisasi kedua layar berhasil! Posisi: ${Math.floor(
-            targetTime
+            anchorTime
           )}s`;
         }
 

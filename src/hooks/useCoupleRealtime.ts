@@ -64,6 +64,7 @@ interface SyncTimestampsMap {
 
 interface RoomSyncSnapshotPayload {
   senderRole: PartnerRole;
+  senderSessionId?: string;
   coupleMeta?: CoupleRoomMeta;
   anniversary?: { date: string; updatedAt: number };
   heartbeatCount?: number;
@@ -182,6 +183,7 @@ export function useCoupleRealtime({
   const partnerLastSeenAtRef = useRef<number>(0);
   const partnerOfflineGraceTimerRef = useRef<number | null>(null);
   const lastRoomSyncRequestAtRef = useRef<number>(0);
+  const metaEchoTimerRef = useRef<number | null>(null);
 
   const todayISO = useMemo(() => getTodayDateISO(), []);
   const todayQuestion = useMemo(
@@ -390,6 +392,12 @@ export function useCoupleRealtime({
         setMyMood(nextMyMood);
       }
 
+      const otherChar: SanrioCharacterId =
+        (otherRole === "user_a"
+          ? profile.userACharacter
+          : profile.userBCharacter) ||
+        (otherRole === "user_a" ? "cinnamoroll" : "my-melody");
+
       const savedPartnerMood = window.localStorage.getItem(
         `${LOCAL_MOOD_KEY}:${profile.roomId}:${otherRole}`
       );
@@ -398,7 +406,12 @@ export function useCoupleRealtime({
         setPartnerMood({
           ...parsedP,
           role: otherRole,
+          characterId: otherChar,
         });
+      } else {
+        setPartnerMood((prev) =>
+          prev ? { ...prev, characterId: otherChar } : prev
+        );
       }
     } catch {
       // ignore
@@ -464,7 +477,7 @@ export function useCoupleRealtime({
     profile.userBCharacter,
   ]);
 
-  // Keep Supabase Presence metadata updated when nickname changes without tearing down channel
+  // Keep Supabase Presence metadata updated when nickname or character changes without tearing down channel
   useEffect(() => {
     if (!supabaseChannelRef.current) return;
     const myName =
@@ -473,6 +486,7 @@ export function useCoupleRealtime({
       .track({
         role: profile.role,
         name: myName,
+        coupleMeta: coupleMetaRef.current,
         online_at: new Date().toISOString(),
         visibility:
           typeof document !== "undefined"
@@ -480,7 +494,13 @@ export function useCoupleRealtime({
             : "visible",
       })
       .catch(() => {});
-  }, [profile.role, profile.userAName, profile.userBName]);
+  }, [
+    profile.role,
+    profile.userAName,
+    profile.userBName,
+    profile.userACharacter,
+    profile.userBCharacter,
+  ]);
 
   const markSeen = useCallback((id: string): boolean => {
     if (seenEventIdsRef.current.has(id)) return true;
@@ -800,31 +820,78 @@ export function useCoupleRealtime({
   // SHARED ROOM STATE RECONCILIATION HELPERS (LWW + MERGE ACROSS ALL TRANSPORTS)
   // ==========================================================================
   const applyIncomingCoupleMeta = useCallback(
-    (incoming?: CoupleRoomMeta | null) => {
+    (incoming?: CoupleRoomMeta | null, options?: { forceDirect?: boolean }) => {
       if (!incoming || typeof incoming !== "object") return;
+      const forceDirect = Boolean(options?.forceDirect);
       const incomingUpdatedAt = incoming.updatedAt ?? 0;
-      const localUpdatedAt = coupleMetaRef.current.updatedAt ?? 0;
+      const localMeta = coupleMetaRef.current;
+      const localUpdatedAt = localMeta.updatedAt ?? 0;
 
-      // Never let an unedited default (updatedAt: 0) or older payload overwrite newer edits
-      if (incomingUpdatedAt <= 0) return;
-      if (localUpdatedAt > 0 && incomingUpdatedAt < localUpdatedAt) return;
+      // Ignore unedited defaults on background presence/snapshot syncs
+      if (!forceDirect && incomingUpdatedAt <= 0) return;
+
+      const localAUpdatedAt = localMeta.userAUpdatedAt ?? localUpdatedAt;
+      const localBUpdatedAt = localMeta.userBUpdatedAt ?? localUpdatedAt;
+      const incomingAUpdatedAt = incoming.userAUpdatedAt ?? incomingUpdatedAt;
+      const incomingBUpdatedAt = incoming.userBUpdatedAt ?? incomingUpdatedAt;
+
+      const acceptA = forceDirect
+        ? incoming.userAUpdatedAt === undefined ||
+          incomingAUpdatedAt === incomingUpdatedAt ||
+          incomingAUpdatedAt >= localAUpdatedAt
+        : incomingAUpdatedAt > localAUpdatedAt;
+
+      const acceptB = forceDirect
+        ? incoming.userBUpdatedAt === undefined ||
+          incomingBUpdatedAt === incomingUpdatedAt ||
+          incomingBUpdatedAt >= localBUpdatedAt
+        : incomingBUpdatedAt > localBUpdatedAt;
+
+      if (!acceptA && !acceptB) return;
+
+      const nextAUpdatedAt = acceptA
+        ? Math.max(
+            incomingAUpdatedAt,
+            incomingAUpdatedAt < localAUpdatedAt
+              ? localAUpdatedAt + 1
+              : localAUpdatedAt
+          )
+        : localAUpdatedAt;
+      const nextBUpdatedAt = acceptB
+        ? Math.max(
+            incomingBUpdatedAt,
+            incomingBUpdatedAt < localBUpdatedAt
+              ? localBUpdatedAt + 1
+              : localBUpdatedAt
+          )
+        : localBUpdatedAt;
+      const nextUpdatedAt = Math.max(
+        localUpdatedAt,
+        incomingUpdatedAt,
+        nextAUpdatedAt,
+        nextBUpdatedAt
+      );
 
       const normalized: CoupleRoomMeta = {
-        userAName:
-          incoming.userAName?.trim() ||
-          coupleMetaRef.current.userAName ||
-          "Awan",
-        userBName:
-          incoming.userBName?.trim() ||
-          coupleMetaRef.current.userBName ||
-          "Melodi",
-        userACharacter: isValidSanrioChar(incoming.userACharacter)
-          ? incoming.userACharacter
-          : coupleMetaRef.current.userACharacter || "cinnamoroll",
-        userBCharacter: isValidSanrioChar(incoming.userBCharacter)
-          ? incoming.userBCharacter
-          : coupleMetaRef.current.userBCharacter || "my-melody",
-        updatedAt: incomingUpdatedAt,
+        userAName: acceptA
+          ? incoming.userAName?.trim() || localMeta.userAName || "Awan"
+          : localMeta.userAName || "Awan",
+        userBName: acceptB
+          ? incoming.userBName?.trim() || localMeta.userBName || "Melodi"
+          : localMeta.userBName || "Melodi",
+        userACharacter: acceptA
+          ? isValidSanrioChar(incoming.userACharacter)
+            ? incoming.userACharacter
+            : localMeta.userACharacter || "cinnamoroll"
+          : localMeta.userACharacter || "cinnamoroll",
+        userBCharacter: acceptB
+          ? isValidSanrioChar(incoming.userBCharacter)
+            ? incoming.userBCharacter
+            : localMeta.userBCharacter || "my-melody"
+          : localMeta.userBCharacter || "my-melody",
+        updatedAt: nextUpdatedAt,
+        userAUpdatedAt: nextAUpdatedAt,
+        userBUpdatedAt: nextBUpdatedAt,
         updatedByRole: incoming.updatedByRole,
       };
 
@@ -852,16 +919,27 @@ export function useCoupleRealtime({
   );
 
   const applyIncomingAnniversary = useCallback(
-    (incoming?: { date: string; updatedAt: number } | null) => {
+    (
+      incoming?: { date: string; updatedAt: number } | null,
+      options?: { forceDirect?: boolean }
+    ) => {
       if (!incoming?.date) return;
+      const forceDirect = Boolean(options?.forceDirect);
       const incomingUpdatedAt = incoming.updatedAt ?? 0;
       const localUpdatedAt = anniversaryRef.current.updatedAt ?? 0;
-      if (incomingUpdatedAt <= 0) return;
-      if (localUpdatedAt > 0 && incomingUpdatedAt < localUpdatedAt) return;
+      if (!forceDirect) {
+        if (incomingUpdatedAt <= 0) return;
+        if (localUpdatedAt > 0 && incomingUpdatedAt < localUpdatedAt) return;
+      }
 
       anniversaryRef.current = {
         date: incoming.date,
-        updatedAt: incomingUpdatedAt,
+        updatedAt: Math.max(
+          incomingUpdatedAt,
+          incomingUpdatedAt < localUpdatedAt
+            ? localUpdatedAt + 1
+            : localUpdatedAt
+        ),
       };
       setAnniversaryDate(incoming.date);
       try {
@@ -897,10 +975,12 @@ export function useCoupleRealtime({
   );
 
   const applyIncomingPartnerMood = useCallback(
-    (status?: PartnerMoodStatus | null) => {
+    (status?: PartnerMoodStatus | null, options?: { forceDirect?: boolean }) => {
       if (!status || status.role === profileRef.current.role) return;
+      const forceDirect = Boolean(options?.forceDirect);
       setPartnerMood((prev) => {
         if (
+          !forceDirect &&
           prev &&
           prev.updatedAt > 0 &&
           status.updatedAt > 0 &&
@@ -916,15 +996,24 @@ export function useCoupleRealtime({
         ) {
           return prev;
         }
+        const normalized: PartnerMoodStatus = {
+          ...status,
+          updatedAt: Math.max(
+            status.updatedAt || 0,
+            prev && status.updatedAt < prev.updatedAt
+              ? prev.updatedAt + 1
+              : prev?.updatedAt || 0
+          ),
+        };
         try {
           window.localStorage.setItem(
             `${LOCAL_MOOD_KEY}:${profileRef.current.roomId}:${status.role}`,
-            JSON.stringify(status)
+            JSON.stringify(normalized)
           );
         } catch {
           // ignore
         }
-        return status;
+        return normalized;
       });
     },
     []
@@ -955,6 +1044,7 @@ export function useCoupleRealtime({
 
     return {
       senderRole: profileRef.current.role,
+      senderSessionId: sessionId,
       coupleMeta: coupleMetaRef.current,
       anniversary: anniversaryRef.current,
       heartbeatCount: heartbeatCountRef.current,
@@ -972,11 +1062,13 @@ export function useCoupleRealtime({
       playlistUpdatedAt: syncTimestampsRef.current.playlistUpdatedAt,
       recentChatMessages: compactChat,
     };
-  }, []);
+  }, [sessionId]);
 
   const applyRoomSyncSnapshot = useCallback(
     (snap?: RoomSyncSnapshotPayload | null) => {
-      if (!snap || snap.senderRole === profileRef.current.role) return;
+      if (!snap || (snap.senderSessionId && snap.senderSessionId === sessionId)) {
+        return;
+      }
 
       const roomId = profileRef.current.roomId;
 
@@ -1145,6 +1237,7 @@ export function useCoupleRealtime({
       applyIncomingHeartbeatCount,
       applyIncomingPartnerMood,
       persistSyncTimestamps,
+      sessionId,
       todayISO,
     ]
   );
@@ -1170,6 +1263,7 @@ export function useCoupleRealtime({
         .track({
           role: profile.role,
           name: myName,
+          coupleMeta: coupleMetaRef.current,
           online_at: new Date().toISOString(),
           visibility,
         })
@@ -1183,10 +1277,11 @@ export function useCoupleRealtime({
       lastRoomSyncRequestAtRef.current = now;
       emitRealtime("room-sync-request", {
         requesterRole: profile.role,
+        requesterSessionId: sessionId,
         timestamp: now,
       });
     }
-  }, [buildPresencePayload, emitRealtime, partnerRole, profile.role]);
+  }, [buildPresencePayload, emitRealtime, partnerRole, profile.role, sessionId]);
 
   const schedulePartnerOfflineGrace = useCallback(() => {
     if (!onlineRolesRef.current.has(partnerRole)) return;
@@ -1261,16 +1356,18 @@ export function useCoupleRealtime({
     };
 
     const handlePresencePayload = (p: any, shouldReplyPong: boolean) => {
-      if (!p || !p.role || p.role === profile.role) return;
-      markPartnerActive();
-      if (p.mood) applyIncomingPartnerMood(p.mood);
+      if (!p || p.sessionId === sessionId) return;
       if (p.coupleMeta) applyIncomingCoupleMeta(p.coupleMeta);
       if (p.anniversary) applyIncomingAnniversary(p.anniversary);
       if (typeof p.heartbeatCount === "number") {
         applyIncomingHeartbeatCount(p.heartbeatCount);
       }
-      if (shouldReplyPong) {
-        replyPresencePong();
+      if (p.role && p.role !== profile.role) {
+        markPartnerActive();
+        if (p.mood) applyIncomingPartnerMood(p.mood);
+        if (shouldReplyPong) {
+          replyPresencePong();
+        }
       }
     };
 
@@ -1445,25 +1542,36 @@ export function useCoupleRealtime({
           }
         })
         .on("broadcast", { event: "couple-meta-sync" }, ({ payload }) => {
-          markPartnerActive();
-          applyIncomingCoupleMeta(payload as CoupleRoomMeta);
+          const incoming = payload as CoupleRoomMeta;
+          if (incoming?.updatedByRole && incoming.updatedByRole !== profile.role) {
+            markPartnerActive();
+          }
+          applyIncomingCoupleMeta(incoming, { forceDirect: true });
         })
         .on("broadcast", { event: "anniversary-sync" }, ({ payload }) => {
-          markPartnerActive();
           applyIncomingAnniversary(
-            payload as { date: string; updatedAt: number }
+            payload as { date: string; updatedAt: number },
+            { forceDirect: true }
           );
         })
         .on("broadcast", { event: "room-sync-request" }, ({ payload }) => {
-          const p = payload as { requesterRole?: PartnerRole };
-          if (!p?.requesterRole || p.requesterRole !== profile.role) {
+          const p = payload as {
+            requesterRole?: PartnerRole;
+            requesterSessionId?: string;
+          };
+          if (p?.requesterRole && p.requesterRole !== profile.role) {
             markPartnerActive();
+          }
+          if (!p?.requesterSessionId || p.requesterSessionId !== sessionId) {
             emitRealtime("room-sync-snapshot", buildRoomSyncSnapshot());
           }
         })
         .on("broadcast", { event: "room-sync-snapshot" }, ({ payload }) => {
-          markPartnerActive();
-          applyRoomSyncSnapshot(payload as RoomSyncSnapshotPayload);
+          const snap = payload as RoomSyncSnapshotPayload;
+          if (snap?.senderRole && snap.senderRole !== profile.role) {
+            markPartnerActive();
+          }
+          applyRoomSyncSnapshot(snap);
         })
         .on("broadcast", { event: "heartbeat" }, ({ payload }) => {
           const event = payload as HeartbeatEvent & { heartbeatCount?: number };
@@ -1620,7 +1728,7 @@ export function useCoupleRealtime({
           const status = payload as PartnerMoodStatus;
           if (status && status.role !== profile.role) {
             markPartnerActive();
-            applyIncomingPartnerMood(status);
+            applyIncomingPartnerMood(status, { forceDirect: true });
           }
         })
         .on("broadcast", { event: "music-sync" }, ({ payload }) => {
@@ -1657,11 +1765,15 @@ export function useCoupleRealtime({
           const state = channel.presenceState<{
             role: PartnerRole;
             name: string;
+            coupleMeta?: CoupleRoomMeta;
             visibility?: string;
           }>();
           let sawPartner = false;
-          Object.values(state).forEach((presences) => {
+          Object.entries(state).forEach(([key, presences]) => {
             presences.forEach((p) => {
+              if (key !== sessionId && p.coupleMeta) {
+                applyIncomingCoupleMeta(p.coupleMeta);
+              }
               if (p.role === partnerRole) {
                 sawPartner = true;
               }
@@ -1673,8 +1785,16 @@ export function useCoupleRealtime({
             schedulePartnerOfflineGrace();
           }
         })
-        .on("presence", { event: "join" }, ({ newPresences }) => {
-          (newPresences as Array<{ role?: PartnerRole }>).forEach((p) => {
+        .on("presence", { event: "join" }, ({ key, newPresences }) => {
+          (
+            newPresences as Array<{
+              role?: PartnerRole;
+              coupleMeta?: CoupleRoomMeta;
+            }>
+          ).forEach((p) => {
+            if (key !== sessionId && p.coupleMeta) {
+              applyIncomingCoupleMeta(p.coupleMeta);
+            }
             if (p.role === partnerRole) {
               markPartnerActive();
               replyPresencePong();
@@ -1694,6 +1814,7 @@ export function useCoupleRealtime({
             await channel.track({
               role: profile.role,
               name: curName,
+              coupleMeta: coupleMetaRef.current,
               online_at: new Date().toISOString(),
               visibility:
                 typeof document !== "undefined"
@@ -1711,6 +1832,7 @@ export function useCoupleRealtime({
               event: "room-sync-request",
               payload: {
                 requesterRole: profile.role,
+                requesterSessionId: sessionId,
                 timestamp: Date.now(),
               },
             });
@@ -1750,28 +1872,39 @@ export function useCoupleRealtime({
           schedulePartnerOfflineGrace();
           break;
         case "couple-meta-sync": {
-          markPartnerActive();
-          applyIncomingCoupleMeta(msg.payload as CoupleRoomMeta);
+          const incoming = msg.payload as CoupleRoomMeta;
+          if (incoming?.updatedByRole && incoming.updatedByRole !== profile.role) {
+            markPartnerActive();
+          }
+          applyIncomingCoupleMeta(incoming, { forceDirect: true });
           break;
         }
         case "anniversary-sync": {
-          markPartnerActive();
           applyIncomingAnniversary(
-            msg.payload as { date: string; updatedAt: number }
+            msg.payload as { date: string; updatedAt: number },
+            { forceDirect: true }
           );
           break;
         }
         case "room-sync-request": {
-          const p = (msg.payload || msg) as { requesterRole?: PartnerRole };
-          if (!p?.requesterRole || p.requesterRole !== profile.role) {
+          const p = (msg.payload || msg) as {
+            requesterRole?: PartnerRole;
+            requesterSessionId?: string;
+          };
+          if (p?.requesterRole && p.requesterRole !== profile.role) {
             markPartnerActive();
+          }
+          if (!p?.requesterSessionId || p.requesterSessionId !== sessionId) {
             emitRealtime("room-sync-snapshot", buildRoomSyncSnapshot());
           }
           break;
         }
         case "room-sync-snapshot": {
-          markPartnerActive();
-          applyRoomSyncSnapshot(msg.payload as RoomSyncSnapshotPayload);
+          const snap = msg.payload as RoomSyncSnapshotPayload;
+          if (snap?.senderRole && snap.senderRole !== profile.role) {
+            markPartnerActive();
+          }
+          applyRoomSyncSnapshot(snap);
           break;
         }
         case "heartbeat": {
@@ -1939,7 +2072,7 @@ export function useCoupleRealtime({
           const status = msg.payload as PartnerMoodStatus;
           if (status && status.role !== profile.role) {
             markPartnerActive();
-            applyIncomingPartnerMood(status);
+            applyIncomingPartnerMood(status, { forceDirect: true });
           }
           break;
         }
@@ -2120,6 +2253,7 @@ export function useCoupleRealtime({
     emitRealtime("presence-ping", buildPresencePayload());
     emitRealtime("room-sync-request", {
       requesterRole: profile.role,
+      requesterSessionId: sessionId,
       timestamp: Date.now(),
     });
 
@@ -2133,6 +2267,10 @@ export function useCoupleRealtime({
     return () => {
       if (presenceHeartbeatTimer) {
         window.clearInterval(presenceHeartbeatTimer);
+      }
+      if (metaEchoTimerRef.current) {
+        window.clearTimeout(metaEchoTimerRef.current);
+        metaEchoTimerRef.current = null;
       }
       if (bc) {
         try {
@@ -2178,12 +2316,31 @@ export function useCoupleRealtime({
   // --------------------------------------------------------------------------
   const broadcastProfileMeta = useCallback(
     (nextProfile: CoupleProfile) => {
+      const prevMeta = coupleMetaRef.current;
+      const nextRev = Math.max(Date.now(), (prevMeta.updatedAt || 0) + 1);
+
+      const nextAName = nextProfile.userAName?.trim() || "Awan";
+      const nextBName = nextProfile.userBName?.trim() || "Melodi";
+      const nextAChar = nextProfile.userACharacter || "cinnamoroll";
+      const nextBChar = nextProfile.userBCharacter || "my-melody";
+
+      const aChanged =
+        nextAName !== prevMeta.userAName || nextAChar !== prevMeta.userACharacter;
+      const bChanged =
+        nextBName !== prevMeta.userBName || nextBChar !== prevMeta.userBCharacter;
+
       const meta: CoupleRoomMeta = {
-        userAName: nextProfile.userAName?.trim() || "Awan",
-        userBName: nextProfile.userBName?.trim() || "Melodi",
-        userACharacter: nextProfile.userACharacter || "cinnamoroll",
-        userBCharacter: nextProfile.userBCharacter || "my-melody",
-        updatedAt: Date.now(),
+        userAName: nextAName,
+        userBName: nextBName,
+        userACharacter: nextAChar,
+        userBCharacter: nextBChar,
+        updatedAt: nextRev,
+        userAUpdatedAt: aChanged
+          ? nextRev
+          : prevMeta.userAUpdatedAt || prevMeta.updatedAt || 0,
+        userBUpdatedAt: bChanged
+          ? nextRev
+          : prevMeta.userBUpdatedAt || prevMeta.updatedAt || 0,
         updatedByRole: nextProfile.role,
       };
       coupleMetaRef.current = meta;
@@ -2196,7 +2353,37 @@ export function useCoupleRealtime({
         // ignore
       }
       if (nextProfile.roomId === profileRef.current.roomId) {
+        // 1. Instant 0ms WebSocket + BroadcastChannel + SSE delivery
         emitRealtime("couple-meta-sync", meta);
+
+        // 2. Piggyback onto Supabase Presence CRDT so newly reconnecting devices receive it automatically
+        const myName =
+          nextProfile.role === "user_a" ? nextAName : nextBName;
+        supabaseChannelRef.current
+          ?.track({
+            role: nextProfile.role,
+            name: myName,
+            coupleMeta: meta,
+            online_at: new Date().toISOString(),
+            visibility:
+              typeof document !== "undefined"
+                ? document.visibilityState
+                : "visible",
+          })
+          .catch(() => {});
+
+        // 3. Anti-jitter confirmation echo (+260ms) for mobile 4G networks
+        if (metaEchoTimerRef.current) {
+          window.clearTimeout(metaEchoTimerRef.current);
+        }
+        metaEchoTimerRef.current = window.setTimeout(() => {
+          metaEchoTimerRef.current = null;
+          supabaseChannelRef.current?.send({
+            type: "broadcast",
+            event: "couple-meta-sync",
+            payload: coupleMetaRef.current,
+          });
+        }, 260);
       }
     },
     [emitRealtime]
@@ -2206,9 +2393,13 @@ export function useCoupleRealtime({
     (nextDate: string) => {
       const trimmed = nextDate.trim();
       if (!trimmed) return;
+      const nextRev = Math.max(
+        Date.now(),
+        (anniversaryRef.current.updatedAt || 0) + 1
+      );
       const record = {
         date: trimmed,
-        updatedAt: Date.now(),
+        updatedAt: nextRev,
       };
       anniversaryRef.current = record;
       setAnniversaryDate(trimmed);
@@ -2877,12 +3068,16 @@ export function useCoupleRealtime({
           ? profile.userACharacter
           : profile.userBCharacter) ||
         "cinnamoroll";
+      const nextRev = Math.max(
+        Date.now(),
+        (myMoodRef.current.updatedAt || 0) + 1
+      );
       const newMood: PartnerMoodStatus = {
         role: profile.role,
         characterId: charId,
         statusText: input.statusText,
         emoji: input.emoji,
-        updatedAt: Date.now(),
+        updatedAt: nextRev,
       };
       myMoodRef.current = newMood;
       setMyMood(newMood);

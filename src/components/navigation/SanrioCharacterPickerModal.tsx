@@ -34,14 +34,25 @@ export function SanrioCharacterPickerModal({
     profile.userBCharacter || "my-melody"
   );
 
+  const wasOpenRef = React.useRef(false);
+  const initialProfileRef = React.useRef<CoupleProfile>(profile);
+
   React.useEffect(() => {
-    if (open) {
+    if (open && !wasOpenRef.current) {
+      wasOpenRef.current = true;
+      initialProfileRef.current = profile;
       setTargetPartner(profile.role);
       setNameA(profile.userAName);
       setNameB(profile.userBName);
       setRoomInput(profile.roomId);
       setCharA(profile.userACharacter || "cinnamoroll");
       setCharB(profile.userBCharacter || "my-melody");
+    } else if (open && wasOpenRef.current) {
+      // Keep characters live-synced if partner updates while modal is open
+      setCharA(profile.userACharacter || "cinnamoroll");
+      setCharB(profile.userBCharacter || "my-melody");
+    } else if (!open && wasOpenRef.current) {
+      wasOpenRef.current = false;
     }
   }, [open, profile]);
 
@@ -50,11 +61,33 @@ export function SanrioCharacterPickerModal({
   const metaB = getSanrioCharacter(charB, "my-melody");
 
   const handleSelectChar = (id: SanrioCharacterId) => {
-    if (targetPartner === "user_a") {
-      setCharA(id);
-    } else {
-      setCharB(id);
+    const nextCharA = targetPartner === "user_a" ? id : charA;
+    const nextCharB = targetPartner === "user_b" ? id : charB;
+    setCharA(nextCharA);
+    setCharB(nextCharB);
+
+    // Zero-delay live broadcast on tap so partner device updates instantaneously (<50ms)
+    onUpdateProfile({
+      ...profile,
+      userAName: nameA.trim() || "Awan",
+      userBName: nameB.trim() || "Melodi",
+      roomId: roomInput.trim() || "couple-room",
+      userACharacter: nextCharA,
+      userBCharacter: nextCharB,
+    });
+  };
+
+  const handleCancel = () => {
+    const snap = initialProfileRef.current;
+    if (
+      snap.userACharacter !== profile.userACharacter ||
+      snap.userBCharacter !== profile.userBCharacter ||
+      snap.userAName !== profile.userAName ||
+      snap.userBName !== profile.userBName
+    ) {
+      onUpdateProfile(snap);
     }
+    onClose();
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -269,7 +302,7 @@ export function SanrioCharacterPickerModal({
             <div className="relative z-10 flex items-center justify-end gap-2.5 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-3.5">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleCancel}
                 className="rounded-full border border-slate-200 dark:border-slate-700 px-4 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 Batal

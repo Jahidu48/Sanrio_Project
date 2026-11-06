@@ -243,29 +243,27 @@ export async function POST(request: NextRequest) {
     if (event === "chat-message" && payload) {
       room.recentMessages = [...room.recentMessages.slice(-49), payload];
     } else if (event === "jockie-sync" && payload) {
-      if (
-        !room.musicState?.updatedAt ||
-        !payload.updatedAt ||
-        payload.updatedAt >= room.musicState.updatedAt
-      ) {
-        room.musicState = payload;
-      }
+      room.musicState = payload;
     } else if (event === "qna-updated" && payload) {
       room.qna = payload;
     } else if (event === "couple-meta-sync" && payload) {
-      if (
-        !room.coupleMeta?.updatedAt ||
-        (payload.updatedAt && payload.updatedAt >= room.coupleMeta.updatedAt)
-      ) {
-        room.coupleMeta = payload;
-      }
+      room.coupleMeta = {
+        ...payload,
+        updatedAt: Math.max(
+          Date.now(),
+          Number(payload.updatedAt) || 0,
+          (room.coupleMeta?.updatedAt || 0) + 1
+        ),
+      };
     } else if (event === "anniversary-sync" && payload) {
-      if (
-        !room.anniversary?.updatedAt ||
-        (payload.updatedAt && payload.updatedAt >= room.anniversary.updatedAt)
-      ) {
-        room.anniversary = payload;
-      }
+      room.anniversary = {
+        ...payload,
+        updatedAt: Math.max(
+          Date.now(),
+          Number(payload.updatedAt) || 0,
+          (room.anniversary?.updatedAt || 0) + 1
+        ),
+      };
     } else if (event === "heartbeat") {
       room.heartbeatCount = (room.heartbeatCount || 0) + 1;
     } else if (event === "partner-mood" && payload?.role) {

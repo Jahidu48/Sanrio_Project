@@ -7,15 +7,15 @@ import {
   Copy,
   Check,
   QrCode,
-  Smartphone,
-  Laptop,
-  Heart,
   Share2,
   Sparkles,
-  Wifi,
+  ExternalLink,
 } from "lucide-react";
 import { getSanrioCharacter } from "@/lib/sanrioCharacters";
 import type { CoupleProfile, PartnerRole } from "@/lib/types";
+
+const PRODUCTION_VERCEL_HOST = "sanrio-project.vercel.app";
+const PINNED_PREVIEW_REGEX = /^sanrio-project-[a-z0-9]+-marine-56d9\.vercel\.app$/i;
 
 export interface PartnerPairingModalProps {
   open: boolean;
@@ -34,16 +34,19 @@ export function PartnerPairingModal({
 }: PartnerPairingModalProps) {
   const [copied, setCopied] = useState(false);
   const [pairingUrl, setPairingUrl] = useState("");
-  const [partnerRoleTarget, setPartnerRoleTarget] = useState<PartnerRole>(
-    profile.role === "user_a" ? "user_b" : "user_a"
-  );
+  const [isOnPinnedPreview, setIsOnPinnedPreview] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       const targetRole = profile.role === "user_a" ? "user_b" : "user_a";
-      setPartnerRoleTarget(targetRole);
 
       const url = new URL(window.location.href);
+      const onPreview = PINNED_PREVIEW_REGEX.test(url.hostname);
+      setIsOnPinnedPreview(onPreview);
+      if (onPreview) {
+        url.hostname = PRODUCTION_VERCEL_HOST;
+      }
+
       url.searchParams.set("role", targetRole);
       url.searchParams.set("room", profile.roomId || "couple-room");
 
@@ -106,8 +109,6 @@ export function PartnerPairingModal({
   const charA = getSanrioCharacter(profile.userACharacter, "cinnamoroll");
   const charB = getSanrioCharacter(profile.userBCharacter, "my-melody");
 
-  const currentRoleName =
-    profile.role === "user_a" ? profile.userAName : profile.userBName;
   const partnerRoleName =
     profile.role === "user_a" ? profile.userBName : profile.userAName;
 
@@ -159,6 +160,24 @@ export function PartnerPairingModal({
                 Scan QR Code atau kirim link ke HP pasanganmu agar tersinkronisasi 2 arah secara real-time!
               </p>
             </div>
+
+            {/* Pinned Preview Hostname Warning */}
+            {isOnPinnedPreview && (
+              <div className="mt-3 rounded-2xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 p-3 text-xs text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2">
+                <span>
+                  Perangkat ini membuka <strong>Link Preview Lama</strong> yang tidak ikut ter-update otomatis. Pindah ke Link Utama:
+                </span>
+                <a
+                  href={`https://${PRODUCTION_VERCEL_HOST}/?role=${profile.role}&room=${encodeURIComponent(
+                    profile.roomId || "couple-room"
+                  )}`}
+                  className="inline-flex items-center gap-1 rounded-xl bg-amber-600 hover:bg-amber-700 px-3 py-1.5 font-bold text-white shrink-0"
+                >
+                  <span>Buka Link Utama</span>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            )}
 
             {/* Live Status Pill */}
             <div className="my-4 flex items-center justify-center">

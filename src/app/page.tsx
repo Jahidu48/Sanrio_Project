@@ -103,6 +103,7 @@ export default function CoupleSpaceDashboard() {
   const [characterBurstKey, setCharacterBurstKey] = useState(0);
 
   const toastTimerRef = useRef<number | null>(null);
+  const charNotifyTimerRef = useRef<number | null>(null);
   const canvasRefHandle = useRef<CoopCanvasHandle | null>(null);
   const miniDoodleRefHandle = useRef<MiniDoodleCanvasHandle | null>(null);
 
@@ -129,9 +130,11 @@ export default function CoupleSpaceDashboard() {
       }
 
       const queryRole = params.get("role") as PartnerRole | null;
+      const queryRoom = params.get("room")?.trim() || null;
 
       if (queryRole === "user_a" || queryRole === "user_b") {
         window.localStorage.setItem(DEVICE_ROLE_KEY, queryRole);
+        window.sessionStorage.setItem(SESSION_ROLE_KEY, queryRole);
       }
 
       if (!savedDeviceRole && !queryRole) {
@@ -149,11 +152,12 @@ export default function CoupleSpaceDashboard() {
             ? savedSessionRole
             : prev.role;
 
-        return {
+        const nextRoomId = queryRoom || parsed.roomId || prev.roomId;
+        const nextProfile: CoupleProfile = {
           role: nextRole,
           userAName: parsed.userAName || prev.userAName,
           userBName: parsed.userBName || prev.userBName,
-          roomId: parsed.roomId || prev.roomId,
+          roomId: nextRoomId,
           userACharacter: toValidCharacter(
             parsed.userACharacter,
             prev.userACharacter || "cinnamoroll"
@@ -163,6 +167,25 @@ export default function CoupleSpaceDashboard() {
             prev.userBCharacter || "my-melody"
           ),
         };
+
+        if (queryRoom) {
+          try {
+            window.localStorage.setItem(
+              PROFILE_META_KEY,
+              JSON.stringify({
+                userAName: nextProfile.userAName,
+                userBName: nextProfile.userBName,
+                roomId: nextProfile.roomId,
+                userACharacter: nextProfile.userACharacter,
+                userBCharacter: nextProfile.userBCharacter,
+              })
+            );
+          } catch {
+            // ignore
+          }
+        }
+
+        return nextProfile;
       });
     } catch {
       // ignore storage errors
@@ -206,7 +229,7 @@ export default function CoupleSpaceDashboard() {
         return prev;
       }
 
-      // Notify if partner updated their Sanrio character live
+      // Notify if partner updated their Sanrio character live (debounced so rapid live taps stay 60fps & chime once)
       if (
         remoteMeta.updatedByRole &&
         remoteMeta.updatedByRole !== prev.role &&
@@ -221,11 +244,17 @@ export default function CoupleSpaceDashboard() {
 
         if (prevPartnerChar !== nextPartnerChar) {
           const charMeta = getSanrioCharacter(nextPartnerChar, "my-melody");
-          notifyProfileCharacterChange(
-            nextPartnerName,
-            charMeta.name,
-            charMeta.svgPath
-          );
+          if (charNotifyTimerRef.current) {
+            window.clearTimeout(charNotifyTimerRef.current);
+          }
+          charNotifyTimerRef.current = window.setTimeout(() => {
+            charNotifyTimerRef.current = null;
+            notifyProfileCharacterChange(
+              nextPartnerName,
+              charMeta.name,
+              charMeta.svgPath
+            );
+          }, 850);
         }
       }
 

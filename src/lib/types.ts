@@ -20,6 +20,8 @@ export interface CoupleRoomMeta {
   userBCharacter: SanrioCharacterId;
   updatedAt: number;
   updatedByRole?: PartnerRole;
+  userAUpdatedAt?: number;
+  userBUpdatedAt?: number;
 }
 
 export interface DailyQnA {
@@ -206,6 +208,8 @@ export interface MusicRoomState {
   isPlaying: boolean;
   startedAtServerTime: number;
   pausedAtSeconds: number;
+  /** Exact track offset (in seconds) at the moment the sender emitted this packet (eliminates device clock skew) */
+  sentAtTrackSeconds?: number;
   updatedBy: string;
   updatedAt?: number;
   queue?: MusicQueueItem[];
