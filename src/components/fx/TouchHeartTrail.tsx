@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -56,13 +56,15 @@ export function TouchHeartTrail() {
     };
 
     const handlePointerDown = (e: PointerEvent) => {
-      // Tap/click spawns 2 cute particles
+      // Do not spawn on mobile touch-start to guarantee 100% native 120Hz smooth scroll gesture recognition
+      if (e.pointerType === "touch") return;
       spawnParticle(e.clientX, e.clientY, 2);
     };
 
     const handlePointerMove = (e: PointerEvent) => {
-      // Only spawn on drag or move when button is pressed (or mobile touch drag)
-      if (e.pointerType === "touch") return; if (e.buttons === 0 && e.pointerType === "mouse") return;
+      // Only spawn on desktop mouse cursor hover/drag, keep touch gesture thread pristine
+      if (e.pointerType === "touch") return;
+      if (e.buttons === 0 && e.pointerType === "mouse") return;
       const now = performance.now();
       if (now - lastMoveTime < 45) return; // throttle 45ms
       lastMoveTime = now;

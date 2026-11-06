@@ -152,7 +152,7 @@ export function SanrioHeroBanner({
               <div className="relative z-10 flex items-center justify-around h-full w-full py-2">
                 {/* User A Character (e.g. Cinnamoroll floating) */}
                 <motion.div
-                  className="flex flex-col items-center justify-center h-full max-h-36 sm:max-h-44 w-1/3 text-center transform-gpu"
+                  className="flex flex-col items-center justify-center h-full max-h-36 sm:max-h-44 w-1/3 text-center transform-gpu pointer-events-none"
                   {...getCharacterAnimation(profile.userACharacter)}
                 >
                   <img
@@ -170,7 +170,7 @@ export function SanrioHeroBanner({
                 <motion.div
                   animate={{ scale: [1, 1.25, 1], rotate: [0, 6, -6, 0] }}
                   transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }}
-                  className="flex flex-col items-center justify-center text-2xl sm:text-3xl select-none transform-gpu"
+                  className="flex flex-col items-center justify-center text-2xl sm:text-3xl select-none transform-gpu pointer-events-none"
                 >
                   <span>💖</span>
                   <span className="text-[9px] font-bold text-pink-500 dark:text-pink-400 mt-0.5 tracking-wider uppercase">
@@ -180,7 +180,7 @@ export function SanrioHeroBanner({
 
                 {/* User B Character (e.g. My Melody / Kuromi) */}
                 <motion.div
-                  className="flex flex-col items-center justify-center h-full max-h-36 sm:max-h-44 w-1/3 text-center transform-gpu"
+                  className="flex flex-col items-center justify-center h-full max-h-36 sm:max-h-44 w-1/3 text-center transform-gpu pointer-events-none"
                   {...getCharacterAnimation(profile.userBCharacter)}
                 >
                   <img

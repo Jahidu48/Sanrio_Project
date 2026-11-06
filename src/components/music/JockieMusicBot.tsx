@@ -104,7 +104,12 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
     const [playerStatusText, setPlayerStatusText] = useState("Jockie Bot Standby 🎵");
     const [isMuted, setIsMuted] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
-    const [isMinimized, setIsMinimized] = useState(false);
+    const [isMinimized, setIsMinimized] = useState(() => {
+      if (typeof window !== "undefined") {
+        return window.innerWidth < 640;
+      }
+      return false;
+    });
     const [isDismissed, setIsDismissed] = useState(false);
     const [showQueue, setShowQueue] = useState(false);
     const [queueInputUrl, setQueueInputUrl] = useState("");
@@ -755,7 +760,9 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
             };
             broadcastState(next);
             setIsDismissed(false);
-            setIsMinimized(false);
+            if (typeof window !== "undefined" && window.innerWidth >= 640) {
+              setIsMinimized(false);
+            }
             setEmbedErrorNotice(false);
             return `🎵 Melanjutkan lagu "${roomState.title}"`;
           }
@@ -790,7 +797,9 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
 
           broadcastState(next);
           setIsDismissed(false);
-          setIsMinimized(false);
+          if (typeof window !== "undefined" && window.innerWidth >= 640) {
+            setIsMinimized(false);
+          }
           setEmbedErrorNotice(false);
           return `🎶 [Jockie Music Bot] Memutar video baru bersama: ${arg}`;
         }
@@ -825,7 +834,9 @@ export const JockieMusicBot = forwardRef<JockieMusicBotHandle, JockieMusicBotPro
           };
           broadcastState(next);
           setIsDismissed(false);
-          setIsMinimized(false);
+          if (typeof window !== "undefined" && window.innerWidth >= 640) {
+            setIsMinimized(false);
+          }
           setEmbedErrorNotice(false);
           return `▶️ [Jockie Music Bot] Melanjutkan pemutaran musik oleh ${senderName}.`;
         }
