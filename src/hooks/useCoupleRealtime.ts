@@ -1058,11 +1058,19 @@ export function useCoupleRealtime({
       });
 
       // 2. Local Cross-Tab Broadcast Channel (within same browser)
-      localBroadcastRef.current?.postMessage({
-        type: event,
-        payload,
-        ...extra,
-      });
+      // Must safely serialize to avoid "object could not be cloned" for DOM/WebRTC objects
+      try {
+        const safeData = JSON.parse(
+          JSON.stringify({
+            type: event,
+            payload,
+            ...extra,
+          })
+        );
+        localBroadcastRef.current?.postMessage(safeData);
+      } catch (err) {
+        console.debug("BroadcastChannel postMessage skipped non-cloneable:", err);
+      }
 
       // 3. Network SSE Hub API (Instant sync between phone and PC over network)
       if (typeof window !== "undefined") {
@@ -1659,8 +1667,28 @@ export function useCoupleRealtime({
     ) => {
       const senderName =
         profile.role === "user_a" ? profile.userAName : profile.userBName;
+
+      // Ensure sdp and candidate are plain objects, never uncloneable DOM instances
+      const safeSdp = signalInput.sdp
+        ? {
+            type: signalInput.sdp.type,
+            sdp: signalInput.sdp.sdp,
+          }
+        : undefined;
+
+      const safeCandidate = signalInput.candidate
+        ? {
+            candidate: signalInput.candidate.candidate,
+            sdpMid: signalInput.candidate.sdpMid,
+            sdpMLineIndex: signalInput.candidate.sdpMLineIndex,
+            usernameFragment: (signalInput.candidate as any)?.usernameFragment,
+          }
+        : undefined;
+
       const signal: WebRTCSignalMessage = {
         ...signalInput,
+        sdp: safeSdp,
+        candidate: safeCandidate,
         id: `sig_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         room_id: profile.roomId,
         caller_role: profile.role,

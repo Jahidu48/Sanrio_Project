@@ -274,7 +274,11 @@ export function WebRTCCallModal({
         onSendSignal({
           type: "call-ice",
           call_type: activeType,
-          candidate: event.candidate.toJSON(),
+          candidate: {
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex,
+          },
         });
       }
     };
@@ -362,10 +366,14 @@ export function WebRTCCallModal({
         }
       });
 
+      const desc = pc.localDescription || offer;
       onSendSignal({
         type: "call-offer",
         call_type: type,
-        sdp: pc.localDescription || offer,
+        sdp: {
+          type: desc.type,
+          sdp: desc.sdp,
+        },
       });
     } catch (err: any) {
       console.warn("[WebRTC] initiateOutgoingCall getUserMedia failed:", err);
@@ -427,10 +435,14 @@ export function WebRTCCallModal({
         }
       });
 
+      const desc = pc.localDescription || answer;
       onSendSignal({
         type: "call-answer",
         call_type: activeType,
-        sdp: pc.localDescription || answer,
+        sdp: {
+          type: desc.type,
+          sdp: desc.sdp,
+        },
       });
 
       setCallState("connected");
