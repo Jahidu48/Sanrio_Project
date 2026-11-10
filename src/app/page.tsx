@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import { RefreshCw, WifiOff } from "lucide-react";
 import { TopCoupleBar } from "@/components/navigation/TopCoupleBar";
 import { BottomTabBar } from "@/components/navigation/BottomTabBar";
 import { DesktopSidebar } from "@/components/navigation/DesktopSidebar";
-import { SanrioCharacterPickerModal } from "@/components/navigation/SanrioCharacterPickerModal";
-import { PartnerPairingModal } from "@/components/navigation/PartnerPairingModal";
 import { FirstTimeRoleModal } from "@/components/navigation/FirstTimeRoleModal";
 import { HeartbeatOrb, type RippleWave } from "@/components/home/HeartbeatOrb";
 import { SecretEnvelopePrompt } from "@/components/home/SecretEnvelopePrompt";
@@ -17,18 +16,68 @@ import { CoupleAnniversaryWidget } from "@/components/home/CoupleAnniversaryWidg
 import { SaasQuickExploreGrid } from "@/components/home/SaasQuickExploreGrid";
 import { CoupleStatsSidebarCards } from "@/components/home/CoupleStatsSidebarCards";
 import type { CoopCanvasHandle } from "@/components/canvas/CoopCanvasTab";
-import { PlaygroundTab } from "@/components/play/PlaygroundTab";
-import { SharedMusicPlayerModal } from "@/components/music/SharedMusicPlayerModal";
 import { JockieMusicBot } from "@/components/music/JockieMusicBot";
 import { PartnerListeningBanner } from "@/components/music/PartnerListeningBanner";
 import { SanrioNotificationToast } from "@/components/navigation/SanrioNotificationToast";
-import { DevicePermissionsModal } from "@/components/navigation/DevicePermissionsModal";
 import { SharedMusicProvider } from "@/context/SharedMusicContext";
 import type { MiniDoodleCanvasHandle } from "@/components/play/DoodleGuessGame";
-import { SharedJournalTab } from "@/components/journal/SharedJournalTab";
 import { CoupleChatTab } from "@/components/chat/CoupleChatTab";
-import { WebRTCCallModal } from "@/components/chat/WebRTCCallModal";
-import { SanrioAiCompanionModal } from "@/components/ai/SanrioAiCompanionModal";
+
+// Code-split heavy secondary tabs & modals to shrink First Load JS and reduce initial DOM memory
+const PlaygroundTab = dynamic(
+  () =>
+    import("@/components/play/PlaygroundTab").then((mod) => mod.PlaygroundTab),
+  { ssr: false }
+);
+const SharedJournalTab = dynamic(
+  () =>
+    import("@/components/journal/SharedJournalTab").then(
+      (mod) => mod.SharedJournalTab
+    ),
+  { ssr: false }
+);
+const WebRTCCallModal = dynamic(
+  () =>
+    import("@/components/chat/WebRTCCallModal").then(
+      (mod) => mod.WebRTCCallModal
+    ),
+  { ssr: false }
+);
+const SanrioAiCompanionModal = dynamic(
+  () =>
+    import("@/components/ai/SanrioAiCompanionModal").then(
+      (mod) => mod.SanrioAiCompanionModal
+    ),
+  { ssr: false }
+);
+const SharedMusicPlayerModal = dynamic(
+  () =>
+    import("@/components/music/SharedMusicPlayerModal").then(
+      (mod) => mod.SharedMusicPlayerModal
+    ),
+  { ssr: false }
+);
+const PartnerPairingModal = dynamic(
+  () =>
+    import("@/components/navigation/PartnerPairingModal").then(
+      (mod) => mod.PartnerPairingModal
+    ),
+  { ssr: false }
+);
+const SanrioCharacterPickerModal = dynamic(
+  () =>
+    import("@/components/navigation/SanrioCharacterPickerModal").then(
+      (mod) => mod.SanrioCharacterPickerModal
+    ),
+  { ssr: false }
+);
+const DevicePermissionsModal = dynamic(
+  () =>
+    import("@/components/navigation/DevicePermissionsModal").then(
+      (mod) => mod.DevicePermissionsModal
+    ),
+  { ssr: false }
+);
 import { useCoupleRealtime } from "@/hooks/useCoupleRealtime";
 import { useAudio } from "@/context/AudioContext";
 import {
