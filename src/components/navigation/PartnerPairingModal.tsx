@@ -49,6 +49,11 @@ export function PartnerPairingModal({
 
       url.searchParams.set("role", targetRole);
       url.searchParams.set("room", profile.roomId || "couple-room");
+      if (profile.roomPin) {
+        url.searchParams.set("pin", profile.roomPin);
+      } else {
+        url.searchParams.delete("pin");
+      }
 
       // If running on localhost on laptop, replace hostname with LAN IP for phone pairing
       if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
@@ -69,7 +74,7 @@ export function PartnerPairingModal({
         setPairingUrl(url.toString());
       }
     }
-  }, [profile.role, profile.roomId, open]);
+  }, [profile.role, profile.roomId, profile.roomPin, open]);
 
   const handleCopyLink = async () => {
     if (!pairingUrl) return;

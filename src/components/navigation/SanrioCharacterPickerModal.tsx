@@ -2,12 +2,13 @@
 
 import React, { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Sparkles, X } from "lucide-react";
+import { Check, Lock, Sparkles, X } from "lucide-react";
 import {
   SANRIO_CHARACTERS,
   getSanrioCharacter,
   type SanrioCharacterId,
 } from "@/lib/sanrioCharacters";
+import { getPinUnlockStorageKey } from "./RoomPinLockModal";
 import type { CoupleProfile, PartnerRole } from "@/lib/types";
 
 export interface SanrioCharacterPickerModalProps {
@@ -27,6 +28,7 @@ export function SanrioCharacterPickerModal({
   const [nameA, setNameA] = useState(profile.userAName);
   const [nameB, setNameB] = useState(profile.userBName);
   const [roomInput, setRoomInput] = useState(profile.roomId);
+  const [pinInput, setPinInput] = useState(profile.roomPin || "");
   const [charA, setCharA] = useState<SanrioCharacterId>(
     profile.userACharacter || "cinnamoroll"
   );
@@ -45,6 +47,7 @@ export function SanrioCharacterPickerModal({
       setNameA(profile.userAName);
       setNameB(profile.userBName);
       setRoomInput(profile.roomId);
+      setPinInput(profile.roomPin || "");
       setCharA(profile.userACharacter || "cinnamoroll");
       setCharB(profile.userBCharacter || "my-melody");
     } else if (open && wasOpenRef.current) {
@@ -66,6 +69,7 @@ export function SanrioCharacterPickerModal({
     setCharA(nextCharA);
     setCharB(nextCharB);
 
+    const cleanedPin = pinInput.replace(/\D/g, "").slice(0, 4);
     // Zero-delay live broadcast on tap so partner device updates instantaneously (<50ms)
     onUpdateProfile({
       ...profile,
@@ -74,6 +78,7 @@ export function SanrioCharacterPickerModal({
       roomId: roomInput.trim() || "couple-room",
       userACharacter: nextCharA,
       userBCharacter: nextCharB,
+      roomPin: cleanedPin.length === 4 ? cleanedPin : "",
     });
   };
 
@@ -83,7 +88,8 @@ export function SanrioCharacterPickerModal({
       snap.userACharacter !== profile.userACharacter ||
       snap.userBCharacter !== profile.userBCharacter ||
       snap.userAName !== profile.userAName ||
-      snap.userBName !== profile.userBName
+      snap.userBName !== profile.userBName ||
+      snap.roomPin !== profile.roomPin
     ) {
       onUpdateProfile(snap);
     }
@@ -92,13 +98,27 @@ export function SanrioCharacterPickerModal({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanedRoom = roomInput.trim() || "couple-room";
+    const cleanedPin = pinInput.replace(/\D/g, "").slice(0, 4);
+    const finalPin = cleanedPin.length === 4 ? cleanedPin : "";
+
+    if (finalPin && typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          getPinUnlockStorageKey(cleanedRoom),
+          finalPin
+        );
+      } catch {}
+    }
+
     onUpdateProfile({
       ...profile,
       userAName: nameA.trim() || "Awan",
       userBName: nameB.trim() || "Melodi",
-      roomId: roomInput.trim() || "couple-room",
+      roomId: cleanedRoom,
       userACharacter: charA,
       userBCharacter: charB,
+      roomPin: finalPin,
     });
     onClose();
   };
@@ -279,21 +299,42 @@ export function SanrioCharacterPickerModal({
                 </div>
               </div>
 
-              {/* Realtime Room Code */}
-              <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-800/60 p-3.5">
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                  Kode Channel Realtime Bersama
-                </label>
-                <input
-                  type="text"
-                  value={roomInput}
-                  onChange={(e) => setRoomInput(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-mono text-[#1E293B] dark:text-white focus:border-sky-400 focus:outline-none"
-                />
-                <p className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-400">
-                  Buka web ini di 2 tab/perangkat dengan kode ruang yang sama (satu pilih{" "}
-                  <strong className="text-[#1E293B] dark:text-white">{nameA || "Partner A"}</strong>, satu pilih{" "}
-                  <strong className="text-[#1E293B] dark:text-white">{nameB || "Partner B"}</strong>) agar semua fitur tersinkronisasi 2-arah!
+              {/* Realtime Room Code & 4-Digit Privacy PIN */}
+              <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-800/60 p-3.5 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                      Kode Channel Realtime Bersama
+                    </label>
+                    <input
+                      type="text"
+                      value={roomInput}
+                      onChange={(e) => setRoomInput(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-mono text-[#1E293B] dark:text-white focus:border-sky-400 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                      <Lock className="h-3 w-3 text-pink-500" />
+                      <span>Kunci PIN Kamar (Opsional 4 Angka)</span>
+                    </label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={pinInput}
+                      onChange={(e) =>
+                        setPinInput(e.target.value.replace(/\D/g, "").slice(0, 4))
+                      }
+                      placeholder="Contoh: 1402 (Kosongkan = Tanpa PIN)"
+                      className="w-full rounded-xl border border-pink-200/80 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-mono tracking-widest text-[#1E293B] dark:text-white placeholder:tracking-normal focus:border-pink-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 dark:text-slate-400">
+                  Buka web ini di 2 perangkat dengan kode ruang yang sama. Jika PIN 4 angka diisi, hanya kalian berdua yang tahu PIN-nya (atau yang scan QR undangan) yang bisa membuka ruang ini! 🔒
                 </p>
               </div>
             </div>

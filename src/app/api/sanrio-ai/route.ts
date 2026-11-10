@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 
 interface MascotRequestBody {
@@ -7,6 +7,24 @@ interface MascotRequestBody {
   userAName?: string;
   userBName?: string;
   history?: Array<{ sender: "user" | "mascot"; text: string }>;
+}
+
+const AI_RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const MAX_AI_REQUESTS_PER_MINUTE = 15;
+
+const aiRateMap: Map<string, { count: number; resetAt: number }> =
+  (globalThis as any).__cinnamelo_ai_rate_map ||
+  ((globalThis as any).__cinnamelo_ai_rate_map = new Map());
+
+function checkAiRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = aiRateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    aiRateMap.set(ip, { count: 1, resetAt: now + AI_RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= MAX_AI_REQUESTS_PER_MINUTE;
 }
 
 const PERSONA_INSTRUCTIONS = {
@@ -67,20 +85,32 @@ function getFallbackResponse(
     return `Yoo! Kuromi is in the house! 😈 Ada yang butuh ide tantangan gila, lelucon baru, atau mau curhat? Jangan malu-malu, sahabat paling keren kalian ini siap jawab apapun! 🖤✨`;
   }
 
-  // my-melody
   if (p.includes("puisi") || p.includes("surat") || p.includes("cinta")) {
     return `*Seperti melodi lagu kesukaan yang berbisik di angin pagi, namamu adalah hal paling indah yang selalu kuingat. Terima kasih telah hadir dan membuat duniaku berhias bunga mekar.* 🎀🌸 Semoga untaian kata ini bisa membuat hati pasanganmu berbunga-bunga yaa! 💕`;
   }
   return `Halo sahabat baikku! 🎀 My Melody ada di sini untuk mendengarkan ${userA} dan ${userB}. Semoga hari kalian selalu dilingkupi kehangatan, kebaikan, dan senyuman yang manis yaa 🌸🍓`;
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      "local-ip";
+    if (!checkAiRateLimit(ip)) {
+      return NextResponse.json(
+        {
+          reply:
+            "Awan Cinnamoroll sedang istirahat sebentar karena terlalu banyak pesan cepat ☁️✨ Coba lagi dalam beberapa detik yaa! 💖",
+        },
+        { status: 429 }
+      );
+    }
+
     const body = (await request.json()) as MascotRequestBody;
-    const prompt = body.prompt?.trim() || "Halo!";
+    const prompt = (body.prompt?.trim() || "Halo!").slice(0, 1200);
     const mascotId = body.mascotId || "cinnamoroll";
-    const userA = body.userAName || "Partner A";
-    const userB = body.userBName || "Partner B";
+    const userA = (body.userAName || "Partner A").slice(0, 40);
+    const userB = (body.userBName || "Partner B").slice(0, 40);
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 

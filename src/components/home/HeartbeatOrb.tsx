@@ -60,7 +60,7 @@ export function HeartbeatOrb({
       <div className="pointer-events-none absolute -top-16 left-1/4 h-52 w-52 rounded-full bg-[#BAE6FD]/35 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-16 right-1/4 h-52 w-52 rounded-full bg-[#FECDD3]/35 blur-3xl" />
 
-      {/* Top Row: Presence Indicator & Solo Preview Toggle */}
+      {/* Top Row: Authentic Presence Indicator & Live Heartbeat Counter */}
       <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 mb-4">
         <div className="inline-flex items-center gap-2 rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-sky-100 dark:border-slate-700 px-3.5 py-1.5 text-xs font-semibold text-[#1E293B] dark:text-white">
           <span
@@ -72,24 +72,15 @@ export function HeartbeatOrb({
           />
           <span>
             {bothPartnersOnline
-              ? "Berdua Aktif Bersama"
+              ? "Berdua Aktif Bersama 💖"
               : "Menunggu Pasangan Online"}
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={onToggleSimulateOnline}
-          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all border ${
-            simulatePartnerOnline
-              ? "bg-pink-50 dark:bg-pink-950/60 border-pink-200 dark:border-pink-800 text-rose-600 dark:text-pink-300"
-              : "bg-white/90 dark:bg-slate-800 border-slate-200/80 dark:border-slate-700 text-slate-500 dark:text-slate-300 hover:border-pink-200 dark:hover:border-purple-600 hover:text-slate-700 dark:hover:text-white"
-          }`}
-          title="Uji tampilan saat kedua pasangan aktif bersamaan"
-        >
-          <Users className="h-3.5 w-3.5" />
-          <span>{simulatePartnerOnline ? "Mode Berdua: ON" : "Preview Berdua"}</span>
-        </button>
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-pink-50/80 dark:bg-pink-950/50 border border-pink-200/70 dark:border-pink-800/70 px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-pink-300">
+          <Heart className="h-3.5 w-3.5 fill-rose-500 text-rose-500" />
+          <span>{heartbeatCount} Detak Rindu</span>
+        </div>
       </div>
 
       {/* Floating Realtime Toast Notification */}

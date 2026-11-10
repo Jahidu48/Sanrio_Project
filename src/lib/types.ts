@@ -11,6 +11,7 @@ export interface CoupleProfile {
   roomId: string;
   userACharacter?: SanrioCharacterId;
   userBCharacter?: SanrioCharacterId;
+  roomPin?: string;
 }
 
 export interface CoupleRoomMeta {
@@ -18,6 +19,7 @@ export interface CoupleRoomMeta {
   userBName: string;
   userACharacter: SanrioCharacterId;
   userBCharacter: SanrioCharacterId;
+  roomPin?: string;
   updatedAt: number;
   updatedByRole?: PartnerRole;
   userAUpdatedAt?: number;

@@ -14,12 +14,14 @@ import { getSanrioCharacter } from "@/lib/sanrioCharacters";
 import { useAudio } from "@/context/AudioContext";
 import type {
   AiChatMessage,
+  AppTab,
   CoupleProfile,
   SanrioMascotId,
 } from "@/lib/types";
 
 export interface SanrioAiCompanionModalProps {
   profile: CoupleProfile;
+  activeTab?: AppTab;
   onForwardToCoupleChat?: (text: string) => void;
 }
 
@@ -67,10 +69,17 @@ const SUGGESTIONS = [
 
 export function SanrioAiCompanionModal({
   profile,
+  activeTab = "home",
   onForwardToCoupleChat,
 }: SanrioAiCompanionModalProps) {
   const { playPop, playChime } = useAudio();
   const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpenEvent = () => setIsOpen(true);
+    window.addEventListener("open-sanrio-ai", handleOpenEvent);
+    return () => window.removeEventListener("open-sanrio-ai", handleOpenEvent);
+  }, []);
   const [activeMascotId, setActiveMascotId] =
     useState<SanrioMascotId>("cinnamoroll");
   const [inputText, setInputText] = useState("");
@@ -195,34 +204,36 @@ export function SanrioAiCompanionModal({
 
   return (
     <>
-      {/* FLOATING LAUNCHER BUTTON */}
-      <motion.button
-        type="button"
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.94 }}
-        onClick={() => {
-          playPop();
-          setIsOpen(true);
-        }}
-        className="fixed bottom-20 right-4 lg:bottom-6 lg:right-6 z-40 flex items-center gap-2 rounded-full bg-white/95 dark:bg-slate-900 border-2 border-pink-200 dark:border-purple-600 p-2 shadow-xl hover:shadow-2xl transition-all"
-        title="Sanrio AI Mascot Companion"
-      >
-        <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-tr from-[#BAE6FD] via-[#FECDD3] to-[#E9D5FF] p-0.5">
-          <div className="flex h-full w-full items-center justify-center rounded-full bg-white dark:bg-slate-800">
-            <img
-              src={currentMascot.avatarSvg}
-              alt=""
-              className="h-7 w-7 object-contain"
-            />
+      {/* FLOATING LAUNCHER BUTTON (Placed on bottom-left & hidden on Chat tab to prevent overlapping Send button or Jockie Music Bot) */}
+      {activeTab !== "chat" && (
+        <motion.button
+          type="button"
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.94 }}
+          onClick={() => {
+            playPop();
+            setIsOpen(true);
+          }}
+          className="fixed bottom-20 left-4 lg:bottom-6 lg:left-6 z-30 flex items-center gap-2 rounded-full bg-white/95 dark:bg-slate-900 border-2 border-pink-200 dark:border-purple-600 p-1.5 sm:p-2 shadow-xl hover:shadow-2xl transition-all cursor-pointer"
+          title="Sanrio AI Mascot Companion"
+        >
+          <div className="relative flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-gradient-to-tr from-[#BAE6FD] via-[#FECDD3] to-[#E9D5FF] p-0.5">
+            <div className="flex h-full w-full items-center justify-center rounded-full bg-white dark:bg-slate-800">
+              <img
+                src={currentMascot.avatarSvg}
+                alt=""
+                className="h-6 w-6 sm:h-7 sm:w-7 object-contain"
+              />
+            </div>
+            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-rose-500 text-[8px] text-white">
+              <Sparkles className="h-2 w-2" />
+            </span>
           </div>
-          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-rose-500 text-[8px] text-white">
-            <Sparkles className="h-2 w-2" />
+          <span className="hidden sm:inline-block pr-2 text-xs font-bold text-[#1E293B] dark:text-white">
+            Sanrio AI ✨
           </span>
-        </div>
-        <span className="hidden sm:inline-block pr-2 text-xs font-bold text-[#1E293B] dark:text-white">
-          Sanrio AI ✨
-        </span>
-      </motion.button>
+        </motion.button>
+      )}
 
       {/* EXPANDABLE AI MODAL / DRAWER */}
       <AnimatePresence>

@@ -78,6 +78,13 @@ const DevicePermissionsModal = dynamic(
     ),
   { ssr: false }
 );
+const RoomPinLockModal = dynamic(
+  () =>
+    import("@/components/navigation/RoomPinLockModal").then(
+      (mod) => mod.RoomPinLockModal
+    ),
+  { ssr: false }
+);
 import { useCoupleRealtime } from "@/hooks/useCoupleRealtime";
 import { useAudio } from "@/context/AudioContext";
 import {
@@ -215,6 +222,7 @@ export default function CoupleSpaceDashboard() {
             parsed.userBCharacter,
             prev.userBCharacter || "my-melody"
           ),
+          roomPin: typeof parsed.roomPin === "string" ? parsed.roomPin : prev.roomPin || "",
         };
 
         if (queryRoom) {
@@ -227,6 +235,7 @@ export default function CoupleSpaceDashboard() {
                 roomId: nextProfile.roomId,
                 userACharacter: nextProfile.userACharacter,
                 userBCharacter: nextProfile.userBCharacter,
+                roomPin: nextProfile.roomPin || "",
               })
             );
           } catch {
@@ -268,12 +277,17 @@ export default function CoupleSpaceDashboard() {
         remoteMeta.userBCharacter,
         prev.userBCharacter || "my-melody"
       );
+      const nextRoomPin =
+        remoteMeta.roomPin !== undefined
+          ? remoteMeta.roomPin
+          : prev.roomPin || "";
 
       if (
         nextAName === prev.userAName &&
         nextBName === prev.userBName &&
         nextAChar === prev.userACharacter &&
-        nextBChar === prev.userBCharacter
+        nextBChar === prev.userBCharacter &&
+        nextRoomPin === (prev.roomPin || "")
       ) {
         return prev;
       }
@@ -316,6 +330,7 @@ export default function CoupleSpaceDashboard() {
             roomId: prev.roomId,
             userACharacter: nextAChar,
             userBCharacter: nextBChar,
+            roomPin: nextRoomPin,
           })
         );
       } catch {
@@ -331,6 +346,7 @@ export default function CoupleSpaceDashboard() {
         userBName: nextBName,
         userACharacter: nextAChar,
         userBCharacter: nextBChar,
+        roomPin: nextRoomPin,
       };
     });
   }, []);
@@ -465,7 +481,8 @@ export default function CoupleSpaceDashboard() {
         next.userAName !== profile.userAName ||
         next.userBName !== profile.userBName ||
         next.userACharacter !== profile.userACharacter ||
-        next.userBCharacter !== profile.userBCharacter;
+        next.userBCharacter !== profile.userBCharacter ||
+        (next.roomPin || "") !== (profile.roomPin || "");
 
       setProfile(next);
       try {
@@ -479,6 +496,7 @@ export default function CoupleSpaceDashboard() {
             roomId: next.roomId,
             userACharacter: next.userACharacter,
             userBCharacter: next.userBCharacter,
+            roomPin: next.roomPin || "",
           })
         );
       } catch {
@@ -915,9 +933,13 @@ export default function CoupleSpaceDashboard() {
           onEndCall={() => setActiveOutgoingCall(null)}
         />
 
+        {/* 4-Digit Room Privacy PIN Lock Screen (Active when roomPin is set) */}
+        <RoomPinLockModal profile={profile} />
+
         {/* Sanrio AI Companion Mascot Modal (Cinnamoroll, Kuromi, My Melody) */}
         <SanrioAiCompanionModal
           profile={profile}
+          activeTab={activeTab}
           onForwardToCoupleChat={handleForwardAiToChat}
         />
 

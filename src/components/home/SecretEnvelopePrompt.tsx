@@ -97,18 +97,6 @@ export function SecretEnvelopePrompt({
     await onResetPrompt(nextQuestion);
   };
 
-  const handleDemoPartnerReply = async () => {
-    const partnerRole = isUserA ? "user_b" : "user_a";
-    const sampleReplies = [
-      "Saat kita ngobrol santai sebelum tidur dan kamu ketawa kecil karena hal receh, rasanya tenang banget 💖",
-      "Duduk berdua di balkon sore-sore sambil minum coklat hangat dan dengerin playlist favorit kita ☁️🎀",
-      "Cara kamu selalu sabar dan bikin hari yang berat terasa jauh lebih ringan setiap kali kita cerita ✨",
-    ];
-    const reply =
-      sampleReplies[Math.floor(Math.random() * sampleReplies.length)];
-    await onSubmitAnswer(reply, partnerRole);
-  };
-
   return (
     <section className="saas-glow-card p-6 sm:p-7">
       {/* Subtle SaaS Rose Radial Inner Glow */}
@@ -277,14 +265,12 @@ export function SecretEnvelopePrompt({
             </motion.p>
           ) : (
             <>
-              {/* Underlying Blurred Teaser Text */}
+              {/* Masked Cipher Placeholder (Never exposes plaintext partner answer in DOM before unlock) */}
               <p
                 aria-hidden="true"
                 className="select-none text-sm leading-relaxed text-slate-400 blur-[6px] opacity-70"
               >
-                {partnerAnswer
-                  ? partnerAnswer
-                  : "Aku menyimpan cerita manis tentang kita minggu ini di balik amplop My Melody."}
+                Rahasia hati tersimpan rapat di dalam segel pita My Melody sampai kedua belah pihak menulis jawaban.
               </p>
 
               {/* Frosted Glass Lock Overlay with Wiggling Padlock */}
@@ -310,17 +296,6 @@ export function SecretEnvelopePrompt({
                     ? `${partnerName} sudah menjawab! Kirim punyamu untuk membuka 💌`
                     : `Menunggu jawaban ${partnerName}...`}
                 </p>
-
-                {!partnerAnswer && myAnswer && (
-                  <button
-                    type="button"
-                    onClick={handleDemoPartnerReply}
-                    className="mt-2 inline-flex items-center gap-1 rounded-full bg-white/90 dark:bg-slate-800 border border-pink-200 dark:border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-rose-500 dark:text-pink-300 hover:bg-pink-50 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    <Sparkles className="h-2.5 w-2.5" />
-                    <span>Simulasikan Balasan {partnerName}</span>
-                  </button>
-                )}
               </div>
             </>
           )}

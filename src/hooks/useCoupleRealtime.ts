@@ -889,6 +889,10 @@ export function useCoupleRealtime({
             ? incoming.userBCharacter
             : localMeta.userBCharacter || "my-melody"
           : localMeta.userBCharacter || "my-melody",
+        roomPin:
+          incoming.roomPin !== undefined
+            ? incoming.roomPin
+            : localMeta.roomPin || "",
         updatedAt: nextUpdatedAt,
         userAUpdatedAt: nextAUpdatedAt,
         userBUpdatedAt: nextBUpdatedAt,
@@ -899,7 +903,8 @@ export function useCoupleRealtime({
         normalized.userAName !== profileRef.current.userAName ||
         normalized.userBName !== profileRef.current.userBName ||
         normalized.userACharacter !== profileRef.current.userACharacter ||
-        normalized.userBCharacter !== profileRef.current.userBCharacter;
+        normalized.userBCharacter !== profileRef.current.userBCharacter ||
+        (normalized.roomPin || "") !== (profileRef.current.roomPin || "");
 
       coupleMetaRef.current = normalized;
       try {
@@ -2323,17 +2328,23 @@ export function useCoupleRealtime({
       const nextBName = nextProfile.userBName?.trim() || "Melodi";
       const nextAChar = nextProfile.userACharacter || "cinnamoroll";
       const nextBChar = nextProfile.userBCharacter || "my-melody";
+      const nextPin = (nextProfile.roomPin || "").trim();
 
       const aChanged =
-        nextAName !== prevMeta.userAName || nextAChar !== prevMeta.userACharacter;
+        nextAName !== prevMeta.userAName ||
+        nextAChar !== prevMeta.userACharacter ||
+        nextPin !== (prevMeta.roomPin || "");
       const bChanged =
-        nextBName !== prevMeta.userBName || nextBChar !== prevMeta.userBCharacter;
+        nextBName !== prevMeta.userBName ||
+        nextBChar !== prevMeta.userBCharacter ||
+        nextPin !== (prevMeta.roomPin || "");
 
       const meta: CoupleRoomMeta = {
         userAName: nextAName,
         userBName: nextBName,
         userACharacter: nextAChar,
         userBCharacter: nextBChar,
+        roomPin: nextPin,
         updatedAt: nextRev,
         userAUpdatedAt: aChanged
           ? nextRev
