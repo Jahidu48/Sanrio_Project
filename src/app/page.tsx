@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { RefreshCw, WifiOff } from "lucide-react";
 import { TopCoupleBar } from "@/components/navigation/TopCoupleBar";
 import { BottomTabBar } from "@/components/navigation/BottomTabBar";
@@ -640,6 +640,7 @@ export default function CoupleSpaceDashboard() {
   };
 
   return (
+    <MotionConfig reducedMotion="user">
     <SharedMusicProvider
       profile={profile}
       playlist={sharedPlaylist}
@@ -649,7 +650,7 @@ export default function CoupleSpaceDashboard() {
       onBroadcastMusicSync={broadcastMusicSync}
     >
       <div className="min-h-dvh w-full max-w-full sanrio-shell-backdrop lg:p-4 xl:p-6">
-        {/* Discord-Style Real-Time Reconnecting / Offline Status Pill */}
+        {/* Real-Time Reconnecting / Offline Status Pill */}
         <AnimatePresence>
           {networkStatus !== "connected" && (
             <div className="fixed top-2.5 inset-x-0 z-[60] flex justify-center px-4 pointer-events-none">
@@ -660,7 +661,7 @@ export default function CoupleSpaceDashboard() {
                 exit={{ opacity: 0, y: -14, scale: 0.94 }}
                 transition={TAB_SPRING_TRANSITION}
                 onClick={syncPresenceNow}
-                className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-slate-900/95 text-amber-200 border border-amber-400/40 px-4 py-1.5 text-xs font-bold shadow-xl active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer"
+                className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-[#2D232E]/95 text-amber-200 border border-amber-400/40 px-4 py-1.5 text-xs font-bold shadow-lg active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer"
               >
                 {networkStatus === "offline" ? (
                   <>
@@ -678,14 +679,14 @@ export default function CoupleSpaceDashboard() {
           )}
         </AnimatePresence>
 
-        {/* Floating Sanrio 3-Tier Notification Toast & Permission Banner */}
+        {/* Floating Sanrio Notification Toast & Permission Banner */}
         <SanrioNotificationToast />
 
         {/* Floating Partner Listening Sync Toast Banner */}
         <PartnerListeningBanner />
 
-        {/* Centered Dashboard Frame (Solid Semi-Opaque on Mobile for 60-120 FPS Zero-Jank Scroll) */}
-        <div className="mx-auto flex min-h-dvh lg:min-h-[calc(100dvh-3rem)] w-full max-w-[1380px] bg-white/95 dark:bg-slate-900/95 lg:backdrop-blur-md lg:rounded-[34px] lg:border lg:border-pink-100/80 dark:lg:border-slate-800 lg:shadow-[0_24px_70px_-15px_rgba(30,41,59,0.08)] dark:lg:shadow-[0_24px_70px_-15px_rgba(0,0,0,0.65)]">
+        {/* Centered Scrapbook Dashboard Frame */}
+        <div className="mx-auto flex min-h-dvh lg:min-h-[calc(100dvh-3rem)] w-full max-w-[1380px] bg-[#FFFDF9] dark:bg-[#1E1721] lg:rounded-[32px] lg:border-2 lg:border-[#F3D8DF] dark:lg:border-[#3B2E40] lg:shadow-soft overflow-hidden">
           {/* Desktop Left Sidebar (lg+) */}
           <DesktopSidebar
             activeTab={activeTab}
@@ -934,7 +935,7 @@ export default function CoupleSpaceDashboard() {
         />
 
         {/* 4-Digit Room Privacy PIN Lock Screen (Active when roomPin is set) */}
-        <RoomPinLockModal profile={profile} />
+        <RoomPinLockModal profile={profile} onUnlocked={syncPresenceNow} />
 
         {/* Sanrio AI Companion Mascot Modal (Cinnamoroll, Kuromi, My Melody) */}
         <SanrioAiCompanionModal
@@ -954,5 +955,6 @@ export default function CoupleSpaceDashboard() {
         <JockieMusicBot profile={profile} />
       </div>
     </SharedMusicProvider>
+    </MotionConfig>
   );
 }

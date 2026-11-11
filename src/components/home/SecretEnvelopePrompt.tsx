@@ -8,7 +8,6 @@ import {
   MailOpen,
   RefreshCw,
   Send,
-  Sparkles,
   Unlock,
 } from "lucide-react";
 import { MyMelodyCharacter } from "@/components/characters/MyMelodyCharacter";
@@ -18,7 +17,10 @@ import type { CoupleProfile, DailyQnA } from "@/lib/types";
 export interface SecretEnvelopePromptProps {
   profile: CoupleProfile;
   todayQnA: DailyQnA;
-  onSubmitAnswer: (answer: string, overrideRole?: "user_a" | "user_b") => Promise<void>;
+  onSubmitAnswer: (
+    answer: string,
+    overrideRole?: "user_a" | "user_b"
+  ) => Promise<void>;
   onResetPrompt: (newQuestion?: string) => Promise<void>;
 }
 
@@ -31,7 +33,7 @@ interface ConfettiPiece {
   size: number;
 }
 
-const CONFETTI_COLORS = ["#FECDD3", "#BAE6FD", "#E9D5FF", "#FB7185", "#38BDF8"];
+const CONFETTI_COLORS = ["#FECDD3", "#BAE6FD", "#FDE68A", "#FB7185", "#38BDF8"];
 
 export function SecretEnvelopePrompt({
   profile,
@@ -48,30 +50,31 @@ export function SecretEnvelopePrompt({
   const myName = isUserA ? profile.userAName : profile.userBName;
   const partnerName = isUserA ? profile.userBName : profile.userAName;
   const myAnswer = isUserA ? todayQnA.user_a_answer : todayQnA.user_b_answer;
-  const partnerAnswer = isUserA ? todayQnA.user_b_answer : todayQnA.user_a_answer;
+  const partnerAnswer = isUserA
+    ? todayQnA.user_b_answer
+    : todayQnA.user_a_answer;
 
   const isUnlocked = Boolean(
     todayQnA.is_unlocked ||
       (todayQnA.user_a_answer?.trim() && todayQnA.user_b_answer?.trim())
   );
 
-  // Trigger celebratory confetti burst when transitioning from locked -> unlocked!
   useEffect(() => {
     if (isUnlocked && !prevUnlockedRef.current) {
-      const pieces: ConfettiPiece[] = Array.from({ length: 28 }).map((_, i) => {
-        const angle = (i / 28) * Math.PI * 2;
-        const dist = 70 + (i % 4) * 38;
+      const pieces: ConfettiPiece[] = Array.from({ length: 24 }).map((_, i) => {
+        const angle = (i / 24) * Math.PI * 2;
+        const dist = 65 + (i % 4) * 35;
         return {
           id: Date.now() + i,
           x: Math.cos(angle) * dist,
-          y: Math.sin(angle) * dist - 25,
+          y: Math.sin(angle) * dist - 20,
           rotate: (i * 47) % 360,
           color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
           size: 7 + (i % 3) * 3,
         };
       });
       setConfetti(pieces);
-      const timer = window.setTimeout(() => setConfetti([]), 2200);
+      const timer = window.setTimeout(() => setConfetti([]), 2000);
       prevUnlockedRef.current = true;
       return () => window.clearTimeout(timer);
     }
@@ -98,11 +101,8 @@ export function SecretEnvelopePrompt({
   };
 
   return (
-    <section className="saas-glow-card p-6 sm:p-7">
-      {/* Subtle SaaS Rose Radial Inner Glow */}
-      <div className="pointer-events-none absolute -top-12 right-12 h-44 w-44 rounded-full bg-[#FECDD3]/30 blur-3xl" />
-
-      {/* Celebratory Confetti / Sparkle Burst Overlay */}
+    <section className="scrapbook-card p-5 sm:p-6">
+      {/* Celebratory Confetti Overlay */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden z-30">
         <AnimatePresence>
           {confetti.map((piece) => (
@@ -113,27 +113,27 @@ export function SecretEnvelopePrompt({
                 opacity: [1, 1, 0],
                 x: piece.x,
                 y: piece.y,
-                scale: [0.4, 1.25, 0.8],
+                scale: [0.4, 1.2, 0.8],
                 rotate: piece.rotate,
               }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 1.6, ease: "easeOut" }}
+              transition={{ duration: 1.5, ease: "easeOut" }}
               style={{
                 width: piece.size,
                 height: piece.size,
                 backgroundColor: piece.color,
               }}
-              className="absolute rounded-full shadow-sm"
+              className="absolute rounded-full"
             />
           ))}
         </AnimatePresence>
       </div>
 
-      {/* Header with Animated My Melody Holding Sealed Love Letter */}
-      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 pb-5 border-b border-pink-100/80 dark:border-slate-800">
-        <div className="shrink-0 -mt-2">
+      {/* Header with My Melody Holding Sealed Letter */}
+      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 pb-5 border-b border-[#F3D8DF] dark:border-[#3B2E40]">
+        <div className="shrink-0 -mt-1">
           <MyMelodyCharacter
-            size={108}
+            size={96}
             withEnvelope
             characterId={profile.userBCharacter || "my-melody"}
           />
@@ -141,16 +141,16 @@ export function SecretEnvelopePrompt({
 
         <div className="flex-1 text-center sm:text-left">
           <div className="flex flex-wrap items-center justify-center sm:justify-between gap-2 mb-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FECDD3]/35 dark:bg-pink-950/60 border border-pink-200/50 dark:border-pink-900/60 px-3 py-1 text-[11px] font-semibold tracking-wide text-rose-500 dark:text-pink-300">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FFF5F7] dark:bg-[#2E2433] border border-[#F3D8DF] dark:border-[#3B2E40] px-3 py-1 text-xs font-bold text-rose-600 dark:text-pink-300">
               {isUnlocked ? (
                 <>
                   <MailOpen className="h-3.5 w-3.5" />
-                  <span>SURAT HARI INI TERBUKA</span>
+                  <span>Surat Hari Ini Terbuka</span>
                 </>
               ) : (
                 <>
                   <Lock className="h-3.5 w-3.5" />
-                  <span>MY MELODY SECRET ENVELOPE</span>
+                  <span>Amplop Rahasia Hari Ini</span>
                 </>
               )}
             </span>
@@ -158,20 +158,20 @@ export function SecretEnvelopePrompt({
             <button
               type="button"
               onClick={handleCycleQuestion}
-              className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-rose-500 dark:hover:text-pink-300 transition-colors"
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium text-[#6E5A68] dark:text-[#B8A6B5] hover:bg-[#FFF5F7] dark:hover:bg-[#2E2433] hover:text-rose-500 transition-colors cursor-pointer"
               title="Ganti pertanyaan hari ini"
             >
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw className="h-3.5 w-3.5" />
               <span>Pertanyaan lain</span>
             </button>
           </div>
 
-          <h2 className="text-base sm:text-lg font-bold leading-relaxed text-[#1E293B] dark:text-white">
+          <h2 className="font-display text-base sm:text-lg font-bold leading-relaxed text-[#2D232E] dark:text-[#FAF5F7]">
             &ldquo;{todayQnA.question}&rdquo;
           </h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Segel surat hanya terbuka saat {profile.userAName} &amp;{" "}
-            {profile.userBName} sama-sama sudah menjawab.
+          <p className="mt-1 text-xs text-[#6E5A68] dark:text-[#B8A6B5]">
+            Segel amplop baru terbuka setelah {profile.userAName} dan{" "}
+            {profile.userBName} sama-sama menjawab.
           </p>
         </div>
       </div>
@@ -179,75 +179,84 @@ export function SecretEnvelopePrompt({
       {/* Input Form if Current Partner Has Not Answered Yet */}
       {!myAnswer ? (
         <form onSubmit={handleSubmit} className="mt-5 space-y-3">
-          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
-            Tulis jawaban jujurmu sebagai{" "}
-            <span className="font-bold text-rose-500 dark:text-pink-400">{myName}</span>:
+          <label className="block text-xs font-semibold text-[#2D232E] dark:text-[#FAF5F7]">
+            Tulis jawabanmu sebagai{" "}
+            <span className="font-bold text-rose-500 dark:text-pink-400">
+              {myName}
+            </span>
+            :
           </label>
           <textarea
             rows={3}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Ceritakan isi hatimu di sini... 💌"
-            className="w-full resize-none rounded-2xl border border-pink-100 dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-800 px-4 py-3 text-sm text-[#1E293B] dark:text-white placeholder:text-slate-400 focus:border-pink-300 dark:focus:border-purple-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none transition-all"
+            placeholder="Tulis isi hatimu di sini..."
+            className="w-full resize-none rounded-2xl border border-[#F3D8DF] dark:border-[#3B2E40] bg-[#FFFBF5] dark:bg-[#18131A] px-4 py-3 text-sm text-[#2D232E] dark:text-white placeholder:text-[#6E5A68]/60 focus:border-rose-400 focus:outline-none transition-colors"
           />
           <div className="flex items-center justify-between gap-3">
-            <span className="text-[11px] text-slate-400 dark:text-slate-400">
+            <span className="text-xs text-[#6E5A68] dark:text-[#B8A6B5]">
               {partnerAnswer
-                ? `✨ ${partnerName} sudah mengirim jawabannya!`
-                : `Menunggu jawabanmu & ${partnerName}`}
+                ? `${partnerName} sudah mengirim jawabannya!`
+                : `Menunggu jawabanmu dan ${partnerName}`}
             </span>
-            <motion.button
+            <button
               type="submit"
-              whileTap={{ scale: 0.96 }}
               disabled={!draft.trim() || isSubmitting}
-              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-pink-500 to-rose-400 hover:from-pink-600 hover:to-rose-500 dark:from-purple-600 dark:to-pink-600 dark:hover:opacity-95 px-5 py-2.5 text-xs font-bold text-white shadow-sm disabled:opacity-40 transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 rounded-full bg-rose-500 hover:bg-rose-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm disabled:opacity-40 active:scale-95 transition-all cursor-pointer"
             >
               <Send className="h-3.5 w-3.5" />
-              <span>Segel Jawaban</span>
-            </motion.button>
+              <span>Simpan Jawaban</span>
+            </button>
           </div>
         </form>
       ) : null}
 
-      {/* Answer Cards Grid (My Answer + Time-Locked / Unlocked Partner Card) */}
+      {/* Answer Cards Grid */}
       <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Current User Card */}
-        <div className="rounded-2xl border border-sky-100 dark:border-slate-800 bg-[#F8FAFC]/90 dark:bg-slate-800/90 p-4 shadow-xs">
+        <div className="rounded-2xl scrapbook-stitched bg-[#FFFBF5] dark:bg-[#2E2433] p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-slate-800 dark:text-white">
-              {myName} <span className="text-slate-400 dark:text-slate-500 font-normal">(Kamu)</span>
+            <span className="text-xs font-bold text-[#2D232E] dark:text-white">
+              {myName}{" "}
+              <span className="text-[#6E5A68] dark:text-[#B8A6B5] font-normal">
+                (Kamu)
+              </span>
             </span>
             {myAnswer ? (
-              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+              <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Tersimpan
               </span>
             ) : (
-              <span className="text-[11px] text-slate-400">Belum diisi</span>
+              <span className="text-xs text-[#6E5A68] dark:text-[#B8A6B5]">
+                Belum diisi
+              </span>
             )}
           </div>
           {myAnswer ? (
-            <p className="text-sm leading-relaxed text-slate-800 dark:text-slate-200">{myAnswer}</p>
+            <p className="text-sm leading-relaxed text-[#2D232E] dark:text-[#FAF5F7]">
+              {myAnswer}
+            </p>
           ) : (
-            <p className="text-xs italic text-slate-400 dark:text-slate-500">
-              Isi jawabanmu di atas untuk membuka amplop rahasia berdua.
+            <p className="text-xs italic text-[#6E5A68] dark:text-[#B8A6B5]">
+              Isi jawabanmu di atas untuk membuka surat hari ini.
             </p>
           )}
         </div>
 
-        {/* Partner Answer Card (Blurred with Wiggling Padlock until BOTH have answered!) */}
-        <div className="relative overflow-hidden rounded-2xl border border-pink-100 dark:border-slate-800 bg-[#FFF9FB] dark:bg-slate-800/90 p-4 min-h-[116px] shadow-xs">
+        {/* Partner Answer Card */}
+        <div className="relative overflow-hidden rounded-2xl scrapbook-stitched bg-[#FFF5F7] dark:bg-[#2E2433] p-4 min-h-[116px]">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-slate-800 dark:text-white">
+            <span className="text-xs font-bold text-[#2D232E] dark:text-white">
               {partnerName}
             </span>
             {isUnlocked ? (
-              <span className="inline-flex items-center gap-1 text-[11px] text-rose-500 dark:text-pink-400 font-medium">
+              <span className="inline-flex items-center gap-1 text-xs text-rose-500 dark:text-pink-300 font-semibold">
                 <Unlock className="h-3.5 w-3.5" />
-                Terbuka!
+                Terbuka
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-[11px] text-rose-400 dark:text-pink-400 font-medium">
+              <span className="inline-flex items-center gap-1 text-xs text-[#6E5A68] dark:text-[#B8A6B5] font-medium">
                 <Lock className="h-3 w-3" />
                 Terkunci
               </span>
@@ -256,48 +265,24 @@ export function SecretEnvelopePrompt({
 
           {isUnlocked ? (
             <motion.p
-              initial={{ opacity: 0, filter: "blur(8px)" }}
-              animate={{ opacity: 1, filter: "blur(0px)" }}
-              transition={{ duration: 0.55 }}
-              className="text-sm leading-relaxed text-[#1E293B] dark:text-slate-200"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.35 }}
+              className="text-sm leading-relaxed text-[#2D232E] dark:text-[#FAF5F7]"
             >
               {partnerAnswer}
             </motion.p>
           ) : (
-            <>
-              {/* Masked Cipher Placeholder (Never exposes plaintext partner answer in DOM before unlock) */}
-              <p
-                aria-hidden="true"
-                className="select-none text-sm leading-relaxed text-slate-400 blur-[6px] opacity-70"
-              >
-                Rahasia hati tersimpan rapat di dalam segel pita My Melody sampai kedua belah pihak menulis jawaban.
-              </p>
-
-              {/* Frosted Glass Lock Overlay with Wiggling Padlock */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/65 dark:bg-slate-900/80 backdrop-blur-md p-3 text-center">
-                <motion.div
-                  animate={{
-                    rotate: [0, -12, 12, -8, 8, 0],
-                    scale: [1, 1.06, 1],
-                  }}
-                  transition={{
-                    repeat: Infinity,
-                    repeatDelay: 1.5,
-                    duration: 0.75,
-                    ease: "easeInOut",
-                  }}
-                  className="mb-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-[#FECDD3]/60 dark:bg-pink-900/60 border border-pink-200 dark:border-pink-700 text-rose-500 dark:text-pink-300 shadow-sm"
-                >
-                  <Lock className="h-4 w-4" />
-                </motion.div>
-
-                <p className="text-xs font-semibold text-[#1E293B] dark:text-white">
-                  {partnerAnswer
-                    ? `${partnerName} sudah menjawab! Kirim punyamu untuk membuka 💌`
-                    : `Menunggu jawaban ${partnerName}...`}
-                </p>
+            <div className="flex flex-col items-center justify-center py-3 text-center">
+              <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-white dark:bg-[#221B25] border border-[#F3D8DF] dark:border-[#3B2E40] text-rose-500">
+                <Lock className="h-4 w-4" />
               </div>
-            </>
+              <p className="text-xs font-semibold text-[#2D232E] dark:text-[#FAF5F7]">
+                {partnerAnswer
+                  ? `${partnerName} sudah menjawab! Kirim jawabanmu untuk membaca.`
+                  : `Menunggu jawaban ${partnerName}...`}
+              </p>
+            </div>
           )}
         </div>
       </div>

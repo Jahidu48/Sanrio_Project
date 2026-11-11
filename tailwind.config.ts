@@ -9,23 +9,40 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: [
+          '"Plus Jakarta Sans"',
+          "-apple-system",
+          "BlinkMacSystemFont",
+          '"Segoe UI"',
+          "Roboto",
+          "sans-serif",
+        ],
+        display: [
+          '"Fredoka"',
+          '"Plus Jakarta Sans"',
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "sans-serif",
+        ],
+      },
       colors: {
         sanrio: {
           white: "#FFFFFF",
-          surface: "#F8FAFC",
-          charcoal: "#334155",
+          surface: "#FFFDF9",
+          charcoal: "#2D232E",
           cinnamoroll: "#BAE6FD",
-          cinnamorollDeep: "#38BDF8",
+          cinnamorollDeep: "#0284C7",
           mymelody: "#FECDD3",
-          mymelodyDeep: "#FB7185",
-          kuromi: "#E9D5FF",
-          kuromiDeep: "#A855F7",
+          mymelodyDeep: "#F43F5E",
+          kuromi: "#F5D0FE",
+          kuromiDeep: "#D946EF",
         },
       },
       boxShadow: {
-        soft: "0 10px 40px -12px rgba(254, 205, 211, 0.35), 0 4px 20px -6px rgba(186, 230, 253, 0.28)",
-        pill: "0 12px 32px -8px rgba(51, 65, 85, 0.08), 0 2px 8px -2px rgba(254, 205, 211, 0.35)",
-        card: "0 8px 30px rgba(51, 65, 85, 0.04)",
+        soft: "0 8px 28px -10px rgba(74, 53, 49, 0.08), 0 2px 8px -2px rgba(244, 114, 182, 0.12)",
+        pill: "0 8px 24px -6px rgba(74, 53, 49, 0.08), 0 2px 6px -1px rgba(244, 114, 182, 0.15)",
+        card: "0 6px 20px -6px rgba(74, 53, 49, 0.06)",
       },
       borderRadius: {
         "3xl": "1.5rem",
@@ -33,8 +50,8 @@ const config: Config = {
       },
       keyframes: {
         "soft-pulse": {
-          "0%, 100%": { opacity: "0.75", transform: "scale(1)" },
-          "50%": { opacity: "1", transform: "scale(1.06)" },
+          "0%, 100%": { opacity: "0.85", transform: "scale(1)" },
+          "50%": { opacity: "1", transform: "scale(1.04)" },
         },
       },
       animation: {

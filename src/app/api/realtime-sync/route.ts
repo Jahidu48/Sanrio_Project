@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import os from "os";
+import { hashRoomPin } from "@/lib/roomSecurity";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -8,7 +9,7 @@ const MAX_ACTIVE_ROOMS = 200;
 const ROOM_IDLE_TTL_MS = 1000 * 60 * 60 * 24; // 24 hours
 const MAX_POST_BODY_BYTES = 1_500_000; // 1.5 MB payload cap
 const RATE_LIMIT_WINDOW_MS = 10_000; // 10 seconds
-const MAX_REQUESTS_PER_WINDOW = 140; // Allows 60fps canvas strokes while blocking floods
+const MAX_REQUESTS_PER_WINDOW = 140; // Allows smooth canvas strokes while blocking floods
 
 function sanitizeRoomId(raw: string | null | undefined): string {
   if (!raw || typeof raw !== "string") return "couple-room";
@@ -35,6 +36,7 @@ function getLanIp(): string {
 interface ConnectedClient {
   id: string;
   role: string;
+  authorized: boolean;
   controller: ReadableStreamDefaultController;
   lastSeen: number;
 }
@@ -135,6 +137,15 @@ function getOrCreateRoom(rawRoomId: string): RoomData {
   return room;
 }
 
+function getSanitizedCoupleMeta(roomId: string, coupleMeta: any) {
+  if (!coupleMeta || typeof coupleMeta !== "object") return null;
+  const hashedPin = hashRoomPin(roomId, coupleMeta.roomPin);
+  return {
+    ...coupleMeta,
+    roomPin: hashedPin,
+  };
+}
+
 function getRoomPresence(room: RoomData) {
   let hasUserA = false;
   let hasUserB = false;
@@ -158,7 +169,8 @@ function getRoomPresence(room: RoomData) {
 function broadcastToRoom(
   room: RoomData,
   payloadStr: string,
-  excludeSessionId?: string
+  excludeSessionId?: string,
+  allowUnauthorized = false
 ) {
   const encoder = new TextEncoder();
   const chunk = encoder.encode(`data: ${payloadStr}\n\n`);
@@ -166,6 +178,7 @@ function broadcastToRoom(
 
   for (const [id, client] of room.clients) {
     if (excludeSessionId && id === excludeSessionId) continue;
+    if (!allowUnauthorized && !client.authorized) continue;
     try {
       client.controller.enqueue(chunk);
     } catch {
@@ -179,8 +192,8 @@ function broadcastToRoom(
 }
 
 /**
- * GET /api/realtime-sync?roomId=...&role=...&sessionId=...
- * Server-Sent Events stream for instant 2-device bidirectional synchronization
+ * GET /api/realtime-sync?roomId=...&role=...&sessionId=...&pinToken=...
+ * Server-Sent Events stream for 2-device synchronization with PIN hash verification
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -201,8 +214,16 @@ export async function GET(request: NextRequest) {
   ).slice(0, 64);
 
   const room = getOrCreateRoom(roomId);
-  const encoder = new TextEncoder();
+  const safeMeta = getSanitizedCoupleMeta(roomId, room.coupleMeta);
+  if (safeMeta) {
+    room.coupleMeta = safeMeta;
+  }
 
+  const requiredPinHash = safeMeta?.roomPin || "";
+  const clientPinHash = hashRoomPin(roomId, searchParams.get("pinToken"));
+  const isAuthorized = !requiredPinHash || clientPinHash === requiredPinHash;
+
+  const encoder = new TextEncoder();
   let keepAliveInterval: NodeJS.Timeout | null = null;
 
   const stream = new ReadableStream({
@@ -210,30 +231,47 @@ export async function GET(request: NextRequest) {
       const client: ConnectedClient = {
         id: sessionId,
         role,
+        authorized: isAuthorized,
         controller,
         lastSeen: Date.now(),
       };
       room.clients.set(sessionId, client);
 
-      // 1. Send initial connection snapshot
+      // 1. Send initial connection snapshot (redact private data if room is PIN-locked and client has not unlocked)
       const presence = getRoomPresence(room);
-      const snapshotEvent = {
-        type: "snapshot",
-        payload: {
-          presence,
-          musicState: room.musicState,
-          recentMessages: room.recentMessages,
-          qna: room.qna,
-          notes: room.notes,
-          coupleMeta: room.coupleMeta,
-          anniversary: room.anniversary,
-          heartbeatCount: room.heartbeatCount,
-          moods: room.moods,
-          gamesState: room.gamesState,
-          bucketItems: room.bucketItems,
-          playlist: room.playlist,
-        },
-      };
+      const snapshotEvent = isAuthorized
+        ? {
+            type: "snapshot",
+            payload: {
+              locked: false,
+              presence,
+              musicState: room.musicState,
+              recentMessages: room.recentMessages,
+              qna: room.qna,
+              notes: room.notes,
+              coupleMeta: safeMeta,
+              anniversary: room.anniversary,
+              heartbeatCount: room.heartbeatCount,
+              moods: room.moods,
+              gamesState: room.gamesState,
+              bucketItems: room.bucketItems,
+              playlist: room.playlist,
+            },
+          }
+        : {
+            type: "snapshot",
+            payload: {
+              locked: true,
+              presence,
+              coupleMeta: safeMeta,
+              recentMessages: [],
+              notes: [],
+              qna: null,
+              bucketItems: [],
+              playlist: [],
+            },
+          };
+
       controller.enqueue(
         encoder.encode(`data: ${JSON.stringify(snapshotEvent)}\n\n`)
       );
@@ -245,7 +283,8 @@ export async function GET(request: NextRequest) {
           type: "presence",
           payload: presence,
         }),
-        sessionId
+        sessionId,
+        true
       );
 
       // 3. Keep-alive ping every 15s to prevent timeouts
@@ -269,7 +308,9 @@ export async function GET(request: NextRequest) {
         JSON.stringify({
           type: "presence",
           payload: presence,
-        })
+        }),
+        undefined,
+        true
       );
     },
   });
@@ -313,6 +354,7 @@ export async function POST(request: NextRequest) {
       payload,
       senderRole,
       senderSessionId,
+      pinToken,
       ...rest
     } = body;
 
@@ -326,6 +368,30 @@ export async function POST(request: NextRequest) {
     }
 
     const room = getOrCreateRoom(roomId);
+    const safeMeta = getSanitizedCoupleMeta(roomId, room.coupleMeta);
+    if (safeMeta) {
+      room.coupleMeta = safeMeta;
+    }
+
+    // Verify PIN hash if the room is protected by a PIN
+    const requiredPinHash = safeMeta?.roomPin || "";
+    if (requiredPinHash) {
+      const candidateHash = hashRoomPin(
+        roomId,
+        pinToken || payload?.roomPin || payload?.coupleMeta?.roomPin
+      );
+      if (candidateHash !== requiredPinHash) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Kamar dikunci PIN. Masukkan PIN 4 angka terlebih dahulu.",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    let finalPayload = payload;
 
     // Update room snapshot cache with bounded collections
     if (event === "chat-message" && payload) {
@@ -335,14 +401,17 @@ export async function POST(request: NextRequest) {
     } else if (event === "qna-updated" && payload) {
       room.qna = payload;
     } else if (event === "couple-meta-sync" && payload) {
-      room.coupleMeta = {
+      const hashedPin = hashRoomPin(roomId, payload.roomPin);
+      finalPayload = {
         ...payload,
+        roomPin: hashedPin,
         updatedAt: Math.max(
           Date.now(),
           Number(payload.updatedAt) || 0,
           (room.coupleMeta?.updatedAt || 0) + 1
         ),
       };
+      room.coupleMeta = finalPayload;
     } else if (event === "anniversary-sync" && payload) {
       room.anniversary = {
         ...payload,
@@ -381,13 +450,18 @@ export async function POST(request: NextRequest) {
 
     const msgToSend = {
       type: event,
-      payload,
+      payload: finalPayload,
       senderRole,
       senderSessionId,
       ...rest,
     };
 
-    broadcastToRoom(room, JSON.stringify(msgToSend), senderSessionId);
+    broadcastToRoom(
+      room,
+      JSON.stringify(msgToSend),
+      senderSessionId,
+      event === "couple-meta-sync"
+    );
 
     return NextResponse.json({
       ok: true,

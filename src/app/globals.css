@@ -3,46 +3,63 @@
 @tailwind utilities;
 
 :root {
+  /* Pastel Scrapbook Light Theme (Warm Cream Paper + Cocoa-Rose Ink) */
   --bg-main: #FFFDF9;
   --bg-card: #FFFFFF;
-  --bg-muted: #FCE7F3;
-  --text-main: #1E293B;
-  --text-muted: #64748B;
-  --border-color: #FBCFE8;
-  --accent-primary: #F472B6;
+  --bg-muted: #FFF5F7;
+  --text-main: #2D232E;
+  --text-muted: #6E5A68;
+  --border-color: #F3D8DF;
+  --accent-primary: #F43F5E;
 
-  /* Character accents & helper variables */
   --bg-pure: #ffffff;
   --bg-soft: #fffdf9;
-  --ink-charcoal: #1e293b;
+  --ink-charcoal: #2d232e;
   --cinnamoroll-blue: #bae6fd;
   --mymelody-pink: #fecdd3;
-  --kuromi-lavender: #e9d5ff;
+  --kuromi-lavender: #f5d0fe;
 }
 
 .dark {
-  --bg-main: #0B0F19;
-  --bg-card: #1E293B;
-  --bg-muted: #312E81;
-  --text-main: #F8FAFC;
-  --text-muted: #94A3B8;
-  --border-color: #334155;
-  --accent-primary: #EC4899;
+  /* Warm Cocoa-Plum Dark Theme (No cold navy, no neon purple/indigo) */
+  --bg-main: #18131A;
+  --bg-card: #221B25;
+  --bg-muted: #2E2433;
+  --text-main: #FAF5F7;
+  --text-muted: #B8A6B5;
+  --border-color: #3B2E40;
+  --accent-primary: #FB7185;
 
-  /* Character accents & helper variables */
-  --bg-pure: #0f172a;
-  --bg-soft: #0b0f19;
-  --ink-charcoal: #f8fafc;
-  --cinnamoroll-blue: #38bdf8;
+  --bg-pure: #221b25;
+  --bg-soft: #18131a;
+  --ink-charcoal: #faf5f7;
+  --cinnamoroll-blue: #7dd3fc;
   --mymelody-pink: #f472b6;
-  --kuromi-lavender: #c084fc;
+  --kuromi-lavender: #f0abfc;
 }
 
 * {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* View Transitions API: Zero-Frame-Drop Instant Theme Switching (150ms GPU Crossfade) */
+/* Accessible keyboard focus indicator (WCAG 2.4.7) */
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Respect OS Reduced Motion preference (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 150ms;
@@ -55,8 +72,8 @@ html {
   max-width: 100%;
   background-color: var(--bg-main);
   color: var(--text-main);
-  font-family: "Plus Jakarta Sans", "Nunito", "Inter", -apple-system,
-    BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
   scroll-behavior: smooth;
 }
 
@@ -67,88 +84,90 @@ body {
   overflow-x: clip;
   background-color: var(--bg-main);
   color: var(--text-main);
-  font-family: "Plus Jakarta Sans", "Nunito", "Inter", -apple-system,
-    BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
   transition: background-color 150ms ease-out;
 }
 
-/* GPU Hardware Layer Promotion Helper */
+h1,
+h2,
+h3,
+.font-display {
+  font-family: "Fredoka", "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont,
+    sans-serif;
+  letter-spacing: -0.01em;
+}
+
 .gpu-layer {
   transform: translateZ(0);
   will-change: transform;
 }
 
-/* Dreamy Authentic Sanrio World Backdrop (GPU-Friendly Scroll on Mobile, Fixed on Desktop) */
+/* Pastel Scrapbook Paper Backdrop */
 .sanrio-shell-backdrop {
-  background-color: #e0f2fe;
+  background-color: #FFFBF5;
   background-image:
-    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.4) 30%, transparent 65%),
-    radial-gradient(circle at 82% 16%, rgba(254, 205, 211, 0.6) 0%, rgba(255, 255, 255, 0.4) 35%, transparent 68%),
-    radial-gradient(circle at 50% 8%, rgba(224, 242, 254, 0.9) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 32%, rgba(253, 224, 71, 0.15) 0%, rgba(244, 114, 182, 0.12) 28%, rgba(56, 189, 248, 0.14) 52%, transparent 75%),
-    radial-gradient(ellipse at 25% 98%, rgba(187, 247, 208, 0.55) 0%, transparent 50%),
-    radial-gradient(ellipse at 75% 98%, rgba(254, 205, 211, 0.5) 0%, transparent 50%),
-    radial-gradient(rgba(244, 114, 182, 0.14) 1.25px, transparent 1.25px),
-    linear-gradient(180deg, #bae6fd 0%, #e0f2fe 18%, #f0f7ff 38%, #fdf2f8 65%, #fef2f2 84%, #f0fdf4 100%);
-  background-size: auto, auto, auto, auto, auto, auto, 28px 28px, 100% 100%;
+    radial-gradient(rgba(244, 114, 182, 0.12) 1.25px, transparent 1.25px),
+    linear-gradient(180deg, #FFFDF9 0%, #FFF7F9 55%, #F5FAFF 100%);
+  background-size: 26px 26px, 100% 100%;
   background-attachment: scroll;
 }
 
-/* Dark Mode: Kuromi Midnight Dreamy Stardust Backdrop */
+/* Warm Cocoa-Plum Night Backdrop */
 .dark .sanrio-shell-backdrop {
-  background-color: #080c16;
+  background-color: #161118;
   background-image:
-    radial-gradient(circle at 84% 14%, rgba(192, 132, 252, 0.28) 0%, rgba(147, 51, 234, 0.15) 35%, transparent 65%),
-    radial-gradient(circle at 16% 18%, rgba(244, 114, 182, 0.22) 0%, transparent 55%),
-    radial-gradient(circle at 50% 85%, rgba(56, 189, 248, 0.14) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 35%, rgba(168, 85, 247, 0.18) 0%, transparent 68%),
-    radial-gradient(rgba(192, 132, 252, 0.16) 1.25px, transparent 1.25px),
-    linear-gradient(180deg, #070a12 0%, #0d1322 25%, #15112c 60%, #090d16 100%);
-  background-size: auto, auto, auto, auto, 32px 32px, 100% 100%;
+    radial-gradient(rgba(251, 113, 133, 0.09) 1.25px, transparent 1.25px),
+    linear-gradient(180deg, #18131A 0%, #1F1822 60%, #161118 100%);
+  background-size: 28px 28px, 100% 100%;
   background-attachment: scroll;
 }
 
-@media (min-width: 1024px) {
-  .sanrio-shell-backdrop,
-  .dark .sanrio-shell-backdrop {
-    background-attachment: fixed;
-  }
-}
-
-/* SaaS Reference Card: Zero-Lag Instant Theme Variable Colors + GPU Transform Only */
+/* Scrapbook Paper Card (Replaces generic SaaS glow card) */
+.scrapbook-card,
 .saas-glow-card {
   position: relative;
   overflow: hidden;
   background-color: var(--bg-card);
   color: var(--text-main);
-  border: 1px solid var(--border-color);
+  border: 1.5px solid var(--border-color);
   border-radius: 1.5rem;
   box-shadow:
-    0 10px 30px -10px rgba(30, 41, 59, 0.05),
-    0 2px 6px -1px rgba(30, 41, 59, 0.02);
-  transition: transform 0.18s ease-out, box-shadow 0.18s ease-out;
+    0 6px 20px -6px rgba(74, 53, 49, 0.06),
+    0 2px 4px -1px rgba(74, 53, 49, 0.03);
+  transition: transform 0.16s ease-out, border-color 0.16s ease-out,
+    box-shadow 0.16s ease-out;
 }
 
+.scrapbook-card:hover,
 .saas-glow-card:hover {
+  border-color: #F9A8D4;
   box-shadow:
-    0 16px 38px -12px rgba(30, 41, 59, 0.08),
-    0 4px 12px -2px rgba(254, 205, 211, 0.18);
+    0 10px 26px -8px rgba(74, 53, 49, 0.09),
+    0 3px 8px -2px rgba(244, 114, 182, 0.12);
 }
 
+.dark .scrapbook-card,
 .dark .saas-glow-card {
-  background-color: rgba(30, 41, 59, 0.96);
-  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  border: 1.5px solid var(--border-color);
   color: var(--text-main);
-  box-shadow:
-    0 10px 30px -10px rgba(0, 0, 0, 0.6),
-    0 2px 8px -1px rgba(192, 132, 252, 0.12);
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
 }
 
+.dark .scrapbook-card:hover,
 .dark .saas-glow-card:hover {
-  border-color: rgba(192, 132, 252, 0.45);
-  box-shadow:
-    0 16px 40px -10px rgba(0, 0, 0, 0.75),
-    0 4px 16px -2px rgba(192, 132, 252, 0.25);
+  border-color: #6B4C5E;
+  box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.65);
+}
+
+/* Dashed Stitched Scrapbook Card Variant (Matches Sanrio Character Grid) */
+.scrapbook-stitched {
+  border: 1.5px dashed #F4B8C8;
+}
+
+.dark .scrapbook-stitched {
+  border: 1.5px dashed #4E3B4D;
 }
 
 /* Auto-contrast theme helpers */
@@ -166,60 +185,66 @@ body {
   color: var(--text-muted);
 }
 
-/* Hairline "Learn more"-style Pill CTA from SaaS reference */
+/* Tactile Scrapbook Pill Button */
+.scrapbook-pill-btn,
 .saas-pill-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.375rem;
   border-radius: 9999px;
-  border: 1px solid #cbd5e1;
-  background-color: rgba(255, 255, 255, 0.95);
-  padding: 0.42rem 1rem;
+  border: 1.5px solid var(--border-color);
+  background-color: var(--bg-muted);
+  padding: 0.45rem 1rem;
   font-size: 0.75rem;
-  font-weight: 600;
-  color: #1e293b;
+  font-weight: 700;
+  color: var(--text-main);
   user-select: none;
   touch-action: manipulation;
-  transition: transform 0.1s ease-out;
+  transition: transform 0.1s ease-out, background-color 0.15s ease-out,
+    color 0.15s ease-out;
 }
 
+.scrapbook-pill-btn:active,
 .saas-pill-btn:active {
   transform: scale(0.96);
 }
 
+.scrapbook-pill-btn:hover,
 .saas-pill-btn:hover {
-  background-color: #1e293b;
-  border-color: #1e293b;
+  background-color: #F43F5E;
+  border-color: #F43F5E;
   color: #ffffff;
 }
 
+.dark .scrapbook-pill-btn,
 .dark .saas-pill-btn {
-  border-color: #475569;
-  background-color: rgba(30, 41, 59, 0.92);
-  color: #e2e8f0;
+  border-color: var(--border-color);
+  background-color: var(--bg-muted);
+  color: var(--text-main);
 }
 
+.dark .scrapbook-pill-btn:hover,
 .dark .saas-pill-btn:hover {
-  background-color: #c084fc;
-  border-color: #c084fc;
-  color: #0f172a;
+  background-color: #FB7185;
+  border-color: #FB7185;
+  color: #18131A;
 }
 
-/* Excalidraw-inspired subtle dotted grid for Co-op Whiteboard */
+/* Dotted grid for Whiteboard */
 .sanrio-dotted-grid {
-  background-color: #ffffff;
-  background-image: radial-gradient(#cbd5e1 1.25px, transparent 1.25px);
+  background-color: #FFFDF9;
+  background-image: radial-gradient(#E5C8D1 1.25px, transparent 1.25px);
   background-size: 22px 22px;
 }
 
 .dark .sanrio-dotted-grid {
-  background-color: #0f172a;
-  background-image: radial-gradient(#334155 1.25px, transparent 1.25px);
+  background-color: #18131A;
+  background-image: radial-gradient(#3B2E40 1.25px, transparent 1.25px);
   background-size: 22px 22px;
 }
 
-/* Minimalist subtle scrollbar */
+/* Subtle warm scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -230,11 +255,11 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #fecdd3;
+  background: #F4B8C8;
   border-radius: 9999px;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #a855f7;
+  background: #5E455B;
   border-radius: 9999px;
 }

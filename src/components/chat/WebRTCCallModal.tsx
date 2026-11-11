@@ -453,7 +453,7 @@ export function WebRTCCallModal({
           stopOfferPingLoop();
           stopCallRing();
           setIsReconnecting(false);
-          setConnectionLabel("Tersambung • Jernih 2-Arah");
+          setConnectionLabel("Tersambung");
           setCallState("connected");
           startCallDurationTimer();
         } else if (state === "connecting") {
@@ -473,7 +473,7 @@ export function WebRTCCallModal({
           stopOfferPingLoop();
           stopCallRing();
           setIsReconnecting(false);
-          setConnectionLabel("Tersambung • Jernih 2-Arah");
+          setConnectionLabel("Tersambung");
           setCallState("connected");
           startCallDurationTimer();
         } else if (iceState === "disconnected" || iceState === "failed") {
@@ -685,7 +685,7 @@ export function WebRTCCallModal({
               },
             });
             setIsReconnecting(false);
-            setConnectionLabel("Tersambung • Jernih 2-Arah");
+            setConnectionLabel("Tersambung");
           } catch (err) {
             console.warn("[WebRTC] Mid-call renegotiation failed:", err);
           }
@@ -806,7 +806,7 @@ export function WebRTCCallModal({
             await flushPendingCandidates(pc);
             setIsReconnecting(false);
             setCallState("connected");
-            setConnectionLabel("Tersambung • Jernih 2-Arah");
+            setConnectionLabel("Tersambung");
             playChime();
             startCallDurationTimer();
           } catch (err) {
@@ -930,7 +930,7 @@ export function WebRTCCallModal({
       });
 
       setCallState("connected");
-      setConnectionLabel("Tersambung • Jernih 2-Arah");
+      setConnectionLabel("Tersambung");
       startCallDurationTimer();
       onDismissIncoming();
     } catch (err: any) {
@@ -1088,11 +1088,11 @@ export function WebRTCCallModal({
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.92, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 380, damping: 30, mass: 0.8 }}
-                className="relative w-full max-w-sm rounded-[32px] border border-pink-200/60 dark:border-purple-700/60 bg-gradient-to-b from-white via-pink-50/60 to-white dark:from-slate-900 dark:via-purple-950/40 dark:to-slate-900 p-8 text-center shadow-2xl space-y-6"
+                className="relative w-full max-w-sm rounded-[32px] border border-[#F3D8DF] dark:border-[#3B2E40] bg-white dark:bg-[#221B25] p-8 text-center shadow-2xl space-y-6"
               >
                 <div className="relative mx-auto flex h-24 w-24 items-center justify-center transform-gpu">
                   <span className="absolute inset-0 rounded-full bg-rose-400/25 animate-ping" />
-                  <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-white dark:bg-slate-800 border-2 border-pink-300 dark:border-purple-400 shadow-lg">
+                  <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-[#FFFDF9] dark:bg-[#2E2433] border-2 border-rose-300 dark:border-rose-700 shadow-lg">
                     <img
                       src={partnerChar.svgPath}
                       alt={partnerChar.name}
@@ -1281,8 +1281,8 @@ export function WebRTCCallModal({
                             }}
                             className="absolute inset-0 rounded-full bg-pink-400/25 blur-md transform-gpu"
                           />
-                          <div className="relative flex h-32 w-32 items-center justify-center rounded-full bg-gradient-to-tr from-rose-400 via-pink-400 to-purple-500 p-1 shadow-2xl">
-                            <div className="flex h-full w-full items-center justify-center rounded-full bg-slate-900">
+                          <div className="relative flex h-32 w-32 items-center justify-center rounded-full bg-rose-400 p-1 shadow-2xl">
+                            <div className="flex h-full w-full items-center justify-center rounded-full bg-[#18131A]">
                               <img
                                 src={partnerChar.svgPath}
                                 alt={partnerChar.name}
@@ -1293,12 +1293,12 @@ export function WebRTCCallModal({
                         </div>
 
                         <div>
-                          <h3 className="text-xl font-extrabold">
+                          <h3 className="text-xl font-display font-bold">
                             {partnerName}
                           </h3>
-                          <p className="mt-1.5 text-xs font-medium text-pink-200">
+                          <p className="mt-1.5 text-xs font-medium text-rose-200">
                             {callState === "connected" && !isReconnecting
-                              ? `Suara Jernih 2-Arah • ${formatDuration(callDuration)}`
+                              ? `Suara Tersambung • ${formatDuration(callDuration)}`
                               : connectionLabel}
                           </p>
                         </div>

@@ -38,6 +38,10 @@ import {
   type SanrioCharacterId,
 } from "@/lib/sanrioCharacters";
 import { notifyPartnerWaiting } from "@/lib/notifications";
+import {
+  getStoredRoomPinToken,
+  hashRoomPin,
+} from "@/lib/roomSecurity";
 
 export type NetworkConnectionStatus = "connected" | "reconnecting" | "offline";
 
@@ -779,6 +783,9 @@ export function useCoupleRealtime({
 
       // 3. Network SSE Hub API (Instant sync between phone and PC over local/LAN network)
       if (typeof window !== "undefined") {
+        const pinToken =
+          getStoredRoomPinToken(profile.roomId) ||
+          hashRoomPin(profile.roomId, profileRef.current.roomPin);
         fetch("/api/realtime-sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -788,6 +795,7 @@ export function useCoupleRealtime({
             payload,
             senderRole: profile.role,
             senderSessionId: sessionId,
+            pinToken,
             ...extra,
           }),
         }).catch(() => {});
@@ -891,8 +899,8 @@ export function useCoupleRealtime({
           : localMeta.userBCharacter || "my-melody",
         roomPin:
           incoming.roomPin !== undefined
-            ? incoming.roomPin
-            : localMeta.roomPin || "",
+            ? hashRoomPin(profileRef.current.roomId, incoming.roomPin)
+            : hashRoomPin(profileRef.current.roomId, localMeta.roomPin),
         updatedAt: nextUpdatedAt,
         userAUpdatedAt: nextAUpdatedAt,
         userBUpdatedAt: nextBUpdatedAt,
@@ -2140,11 +2148,16 @@ export function useCoupleRealtime({
     // Network Cross-Device SSE Stream (Instant 2-way sync across local LAN devices)
     if (typeof window !== "undefined" && typeof EventSource !== "undefined") {
       try {
+        const pinToken =
+          getStoredRoomPinToken(profile.roomId) ||
+          hashRoomPin(profile.roomId, profileRef.current.roomPin);
         const sseUrl = `/api/realtime-sync?roomId=${encodeURIComponent(
           profile.roomId
         )}&role=${encodeURIComponent(
           profile.role
-        )}&sessionId=${encodeURIComponent(sessionId)}`;
+        )}&sessionId=${encodeURIComponent(sessionId)}${
+          pinToken ? `&pinToken=${encodeURIComponent(pinToken)}` : ""
+        }`;
         eventSource = new EventSource(sseUrl);
 
         eventSource.onopen = () => {
@@ -2328,7 +2341,7 @@ export function useCoupleRealtime({
       const nextBName = nextProfile.userBName?.trim() || "Melodi";
       const nextAChar = nextProfile.userACharacter || "cinnamoroll";
       const nextBChar = nextProfile.userBCharacter || "my-melody";
-      const nextPin = (nextProfile.roomPin || "").trim();
+      const nextPin = hashRoomPin(nextProfile.roomId, nextProfile.roomPin);
 
       const aChanged =
         nextAName !== prevMeta.userAName ||

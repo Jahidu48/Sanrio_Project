@@ -1,14 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { motion } from "framer-motion";
 import {
   Brush,
-  Gamepad2,
   Grid3X3,
+  Heart,
   HeartHandshake,
   Palette,
-  Sparkles,
 } from "lucide-react";
 import { useAudio } from "@/context/AudioContext";
 import {
@@ -39,7 +37,6 @@ export interface PlaygroundTabProps {
   onUpdateGamesState: (
     updater: (prev: CoupleGamesState) => CoupleGamesState
   ) => void;
-  // Canvas props
   canvasRefHandle: React.RefObject<CoopCanvasHandle | null>;
   stamps: CanvasStamp[];
   partnerCursor: PartnerCursor | null;
@@ -49,7 +46,6 @@ export interface PlaygroundTabProps {
   ) => void;
   onClearCanvas: () => void;
   onBroadcastCursor: (x: number, y: number, color: string) => void;
-  // Mini Doodle
   miniCanvasRef: React.RefObject<MiniDoodleCanvasHandle | null>;
   onBroadcastMiniStroke: (
     seg: Omit<StrokeSegment, "id" | "senderRole">
@@ -64,42 +60,36 @@ const SUB_TABS: Array<{
   title: string;
   badge: string;
   icon: React.ComponentType<{ className?: string }>;
-  accentBg: string;
 }> = [
   {
     id: "canvas",
     title: "Papan Gambar",
-    badge: "Shared Canvas",
+    badge: "Kanvas",
     icon: Palette,
-    accentBg: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
   },
   {
     id: "truthdare",
-    title: "Truth / Dare",
-    badge: "Kartu Rahasia",
-    icon: Sparkles,
-    accentBg: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+    title: "Jujur / Tantangan",
+    badge: "Kartu",
+    icon: Heart,
   },
   {
     id: "telepathy",
-    title: "Telepati Cinta",
-    badge: "1 Frekuensi",
+    title: "Uji Telepati",
+    badge: "Sehati",
     icon: HeartHandshake,
-    accentBg: "bg-rose-100 text-rose-800 dark:bg-pink-950 dark:text-pink-300",
   },
   {
     id: "tictac",
     title: "Tic-Tac-Sanrio",
-    badge: "Taruhan Manis",
+    badge: "3 Baris",
     icon: Grid3X3,
-    accentBg: "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300",
   },
   {
     id: "doodle",
     title: "Tebak Gambar",
-    badge: "Live Doodle",
+    badge: "Kuis",
     icon: Brush,
-    accentBg: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
   },
 ];
 
@@ -144,37 +134,35 @@ export function PlaygroundTab({
   return (
     <div className="space-y-5">
       {/* Top Navigation Pill Bar */}
-      <div className="rounded-[28px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-pink-100/80 dark:border-slate-800 p-2 sm:p-2.5 shadow-sm">
+      <div className="rounded-3xl bg-[#FFFDF9] dark:bg-[#221B25] border-2 border-[#F3D8DF] dark:border-[#3B2E40] p-2 sm:p-2.5 shadow-2xs">
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth">
           {SUB_TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeSubTab === tab.id;
 
             return (
-              <motion.button
+              <button
                 key={tab.id}
                 type="button"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.97 }}
                 onClick={() => handleSwitchSubTab(tab.id)}
                 className={`relative flex items-center gap-2 rounded-2xl px-3.5 py-2 text-xs font-bold transition-all shrink-0 cursor-pointer ${
                   isActive
-                    ? "bg-gradient-to-r from-pink-500 to-rose-400 dark:from-purple-600 dark:to-pink-600 text-white shadow-sm"
-                    : "bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:bg-pink-50/50 dark:hover:bg-slate-800"
+                    ? "bg-rose-500 text-white shadow-2xs"
+                    : "bg-[#FFF5F7] dark:bg-[#2E2433] border border-[#F3D8DF] dark:border-[#3B2E40] text-[#2D232E] dark:text-[#FAF5F7] hover:border-rose-300"
                 }`}
               >
                 <Icon className="h-4 w-4" />
                 <span>{tab.title}</span>
                 <span
-                  className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold hidden md:inline ${
+                  className={`text-[11px] px-2 py-0.5 rounded-full font-semibold hidden md:inline ${
                     isActive
                       ? "bg-white/20 text-white"
-                      : "bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                      : "bg-white dark:bg-[#221B25] text-[#6E5A68] dark:text-[#B8A6B5]"
                   }`}
                 >
                   {tab.badge}
                 </span>
-              </motion.button>
+              </button>
             );
           })}
         </div>

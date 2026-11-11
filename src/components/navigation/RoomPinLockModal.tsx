@@ -2,49 +2,66 @@
 
 import React, { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Lock, ShieldCheck, Sparkles, Delete } from "lucide-react";
+import { Lock, ShieldCheck, Delete } from "lucide-react";
 import { getSanrioCharacter } from "@/lib/sanrioCharacters";
 import { useAudio } from "@/context/AudioContext";
+import {
+  getPinUnlockStorageKey,
+  getStoredRoomPinToken,
+  hashRoomPin,
+  storeUnlockedRoomPinToken,
+} from "@/lib/roomSecurity";
 import type { CoupleProfile } from "@/lib/types";
+
+export { getPinUnlockStorageKey };
 
 export interface RoomPinLockModalProps {
   profile: CoupleProfile;
+  onUnlocked?: () => void;
 }
 
-export function getPinUnlockStorageKey(roomId: string): string {
-  return `cinnamelo_pin_unlocked_${roomId}`;
-}
-
-export function RoomPinLockModal({ profile }: RoomPinLockModalProps) {
+export function RoomPinLockModal({
+  profile,
+  onUnlocked,
+}: RoomPinLockModalProps) {
   const { playPop, playSuccess } = useAudio();
   const [enteredPin, setEnteredPin] = useState("");
   const [hasError, setHasError] = useState(false);
   const [isUnlocked, setIsUnlocked] = useState(true);
 
-  const requiredPin = (profile.roomPin || "").trim();
+  const requiredPinHash = hashRoomPin(profile.roomId, profile.roomPin);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    if (!requiredPin) {
+    if (!requiredPinHash) {
       setIsUnlocked(true);
       return;
     }
 
-    // Check URL invite param first (?pin=...) for seamless QR pairing
-    const params = new URLSearchParams(window.location.search);
-    const urlPin = params.get("pin")?.trim();
-    const storageKey = getPinUnlockStorageKey(profile.roomId);
+    // Check URL invite token (?invite=... or legacy ?pin=...) from QR pairing
+    const url = new URL(window.location.href);
+    const inviteToken =
+      url.searchParams.get("invite")?.trim() ||
+      url.searchParams.get("pin")?.trim();
 
-    if (urlPin && urlPin === requiredPin) {
-      window.localStorage.setItem(storageKey, requiredPin);
-      setIsUnlocked(true);
-      return;
+    if (inviteToken) {
+      const candidateHash = hashRoomPin(profile.roomId, inviteToken);
+      if (candidateHash === requiredPinHash) {
+        storeUnlockedRoomPinToken(profile.roomId, requiredPinHash);
+        // Strip sensitive token from address bar & history
+        url.searchParams.delete("invite");
+        url.searchParams.delete("pin");
+        window.history.replaceState({}, "", url.toString());
+        setIsUnlocked(true);
+        onUnlocked?.();
+        return;
+      }
     }
 
-    const storedPin = window.localStorage.getItem(storageKey);
-    setIsUnlocked(storedPin === requiredPin);
-  }, [requiredPin, profile.roomId]);
+    const storedHash = getStoredRoomPinToken(profile.roomId);
+    setIsUnlocked(storedHash === requiredPinHash);
+  }, [requiredPinHash, profile.roomId, onUnlocked]);
 
   const handleDigitPress = (digit: string) => {
     if (enteredPin.length >= 4) return;
@@ -54,16 +71,13 @@ export function RoomPinLockModal({ profile }: RoomPinLockModalProps) {
     setEnteredPin(nextPin);
 
     if (nextPin.length === 4) {
-      if (nextPin === requiredPin) {
+      const candidateHash = hashRoomPin(profile.roomId, nextPin);
+      if (candidateHash === requiredPinHash) {
         playSuccess();
-        try {
-          window.localStorage.setItem(
-            getPinUnlockStorageKey(profile.roomId),
-            requiredPin
-          );
-        } catch {}
+        storeUnlockedRoomPinToken(profile.roomId, requiredPinHash);
         setIsUnlocked(true);
         setEnteredPin("");
+        onUnlocked?.();
       } else {
         setHasError(true);
         if (typeof navigator !== "undefined" && "vibrate" in navigator) {
@@ -90,48 +104,47 @@ export function RoomPinLockModal({ profile }: RoomPinLockModalProps) {
 
   return (
     <AnimatePresence>
-      {!isUnlocked && requiredPin && (
+      {!isUnlocked && requiredPinHash && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 backdrop-blur-xl p-4 select-none"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-[#18131A]/85 p-4 select-none"
         >
           <motion.div
-            initial={{ scale: 0.92, y: 16, opacity: 0 }}
+            initial={{ scale: 0.94, y: 12, opacity: 0 }}
             animate={{
               scale: 1,
               y: 0,
               opacity: 1,
               x: hasError ? [0, -10, 10, -8, 8, 0] : 0,
             }}
-            transition={{ duration: 0.3 }}
-            className="relative w-full max-w-sm rounded-[32px] border border-pink-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl text-center"
+            transition={{ duration: 0.25 }}
+            className="relative w-full max-w-sm rounded-3xl border-2 border-[#F3D8DF] dark:border-[#3B2E40] bg-[#FFFDF9] dark:bg-[#221B25] p-6 shadow-xl text-center"
           >
             {/* Couple Mascot Header */}
-            <div className="mx-auto mb-3 flex items-center justify-center gap-2">
+            <div className="mx-auto mb-3 flex items-center justify-center gap-2.5">
               <img
                 src={charA.svgPath}
                 alt={charA.name}
-                className="h-12 w-12 object-contain drop-shadow-sm"
+                className="h-12 w-12 object-contain"
               />
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-pink-500 to-rose-400 text-white shadow-md">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-500 text-white shadow-sm">
                 <Lock className="h-5 w-5" />
               </div>
               <img
                 src={charB.svgPath}
                 alt={charB.name}
-                className="h-12 w-12 object-contain drop-shadow-sm"
+                className="h-12 w-12 object-contain"
               />
             </div>
 
-            <h3 className="text-lg font-extrabold text-[#1E293B] dark:text-white flex items-center justify-center gap-1.5">
-              <span>Ruang Privat Terkunci</span>
-              <Sparkles className="h-4 w-4 text-pink-500" />
+            <h3 className="font-display text-lg font-bold text-[#2D232E] dark:text-[#FAF5F7]">
+              Kamar Privat Terkunci
             </h3>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Masukkan 4 digit PIN privasi milik{" "}
-              <strong className="text-slate-700 dark:text-slate-200">
+            <p className="mt-1 text-xs text-[#6E5A68] dark:text-[#B8A6B5]">
+              Masukkan 4 angka PIN milik{" "}
+              <strong className="text-[#2D232E] dark:text-white">
                 {profile.userAName} &amp; {profile.userBName}
               </strong>{" "}
               untuk membuka kamar <code>#{profile.roomId}</code>
@@ -148,8 +161,8 @@ export function RoomPinLockModal({ profile }: RoomPinLockModalProps) {
                       hasError
                         ? "border-rose-500 bg-rose-500 scale-110"
                         : filled
-                        ? "border-pink-500 bg-pink-500 scale-110 shadow-[0_0_10px_rgba(244,114,182,0.7)]"
-                        : "border-slate-300 dark:border-slate-700 bg-transparent"
+                        ? "border-rose-500 bg-rose-500 scale-110"
+                        : "border-[#E5C8D1] dark:border-[#4A3A50] bg-transparent"
                     }`}
                   />
                 );
@@ -157,8 +170,8 @@ export function RoomPinLockModal({ profile }: RoomPinLockModalProps) {
             </div>
 
             {hasError && (
-              <p className="mb-3 text-xs font-bold text-rose-500">
-                PIN tidak sesuai. Silakan coba lagi ya! 🔒
+              <p className="mb-3 text-xs font-bold text-rose-500" role="alert">
+                PIN belum tepat, coba lagi ya.
               </p>
             )}
 
@@ -169,7 +182,7 @@ export function RoomPinLockModal({ profile }: RoomPinLockModalProps) {
                   key={digit}
                   type="button"
                   onClick={() => handleDigitPress(digit)}
-                  className="flex h-12 items-center justify-center rounded-2xl border border-pink-100 dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-800/80 text-base font-extrabold text-[#1E293B] dark:text-white hover:bg-pink-50 dark:hover:bg-slate-700 active:scale-95 transition-all cursor-pointer"
+                  className="flex h-12 items-center justify-center rounded-2xl border border-[#F3D8DF] dark:border-[#3B2E40] bg-white dark:bg-[#2E2433] text-base font-bold text-[#2D232E] dark:text-white hover:bg-rose-50 dark:hover:bg-[#3B2E40] active:scale-95 transition-all cursor-pointer"
                 >
                   {digit}
                 </button>
@@ -180,15 +193,15 @@ export function RoomPinLockModal({ profile }: RoomPinLockModalProps) {
               <button
                 type="button"
                 onClick={() => handleDigitPress("0")}
-                className="flex h-12 items-center justify-center rounded-2xl border border-pink-100 dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-800/80 text-base font-extrabold text-[#1E293B] dark:text-white hover:bg-pink-50 dark:hover:bg-slate-700 active:scale-95 transition-all cursor-pointer"
+                className="flex h-12 items-center justify-center rounded-2xl border border-[#F3D8DF] dark:border-[#3B2E40] bg-white dark:bg-[#2E2433] text-base font-bold text-[#2D232E] dark:text-white hover:bg-rose-50 dark:hover:bg-[#3B2E40] active:scale-95 transition-all cursor-pointer"
               >
                 0
               </button>
               <button
                 type="button"
                 onClick={handleBackspace}
-                aria-label="Hapus digit"
-                className="flex h-12 items-center justify-center rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 hover:bg-rose-50 hover:text-rose-500 active:scale-95 transition-all cursor-pointer"
+                aria-label="Hapus angka"
+                className="flex h-12 items-center justify-center rounded-2xl border border-[#F3D8DF] dark:border-[#3B2E40] bg-[#FAF0F3] dark:bg-[#2E2433] text-[#6E5A68] dark:text-[#B8A6B5] hover:bg-rose-100 hover:text-rose-600 active:scale-95 transition-all cursor-pointer"
               >
                 <Delete className="h-4 w-4" />
               </button>

@@ -14,7 +14,6 @@ import {
   Eraser,
   Heart,
   Pencil,
-  Sparkles,
   Stamp,
   Star,
   Trash2,
@@ -51,10 +50,10 @@ export interface CoopCanvasTabProps {
 }
 
 const SANRIO_BRUSH_COLORS = [
-  { name: "Charcoal Ink", hex: "#334155" },
+  { name: "Cocoa Ink", hex: "#2A2029" },
   { name: "Cinnamoroll Sky", hex: "#7DD3FC" },
   { name: "My Melody Pink", hex: "#FDA4AF" },
-  { name: "Kuromi Lavender", hex: "#C084FC" },
+  { name: "Pompompurin Butter", hex: "#FBBF24" },
   { name: "Cloud Pastel", hex: "#BAE6FD" },
   { name: "Sweet Berry", hex: "#FB7185" },
 ];
@@ -192,7 +191,7 @@ export function CoopCanvasTab({
   const [toolMode, setToolMode] = useState<"brush" | "eraser" | "stamp">(
     "brush"
   );
-  const [brushColor, setBrushColor] = useState<string>("#334155");
+  const [brushColor, setBrushColor] = useState<string>("#2A2029");
   const [strokeWidth, setStrokeWidth] = useState<number>(6);
   const [selectedStamp, setSelectedStamp] = useState<StampKind>("heart");
   const [showStampTray, setShowStampTray] = useState(false);
@@ -262,7 +261,6 @@ export function CoopCanvasTab({
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Replay all recorded stroke segments so resize never loses drawings
     strokesHistoryRef.current.forEach((seg) => renderSegmentOnCanvas(seg));
   }, [renderSegmentOnCanvas]);
 
@@ -272,7 +270,6 @@ export function CoopCanvasTab({
     return () => window.removeEventListener("resize", resizeAndReplayCanvas);
   }, [resizeAndReplayCanvas]);
 
-  // Expose remote drawing & clear handlers to parent hook
   useImperativeHandle(
     canvasRefHandle,
     () => ({
@@ -320,7 +317,6 @@ export function CoopCanvasTab({
     activeStrokeIdRef.current = `stk_${Date.now()}`;
     lastNormalizedPosRef.current = coords;
 
-    // Draw initial dot
     const dotSeg = {
       strokeId: activeStrokeIdRef.current,
       prevX: coords.x,
@@ -392,8 +388,7 @@ export function CoopCanvasTab({
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
 
-    // Subtle pastel dot pattern in exported image
-    ctx.fillStyle = "#E2E8F0";
+    ctx.fillStyle = "#F3D8DF";
     for (let x = 20; x < exportCanvas.width; x += 28) {
       for (let y = 20; y < exportCanvas.height; y += 28) {
         ctx.beginPath();
@@ -405,7 +400,7 @@ export function CoopCanvasTab({
     ctx.drawImage(canvas, 0, 0);
 
     const link = document.createElement("a");
-    link.download = `cinnamelo-canvas-${new Date().toISOString().slice(0, 10)}.png`;
+    link.download = `sanrio-canvas-${new Date().toISOString().slice(0, 10)}.png`;
     link.href = exportCanvas.toDataURL("image/png");
     link.click();
   };
@@ -414,14 +409,14 @@ export function CoopCanvasTab({
     partnerCursor && Date.now() - partnerCursor.updatedAt < 6000;
 
   return (
-    <section className="relative flex flex-col h-[calc(100dvh-168px)] min-h-[500px] w-full rounded-3xl border border-pink-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-soft">
-      {/* Top Minimalist Whiteboard Header Pill */}
+    <section className="relative flex flex-col h-[calc(100dvh-168px)] min-h-[500px] w-full rounded-[28px] border border-[#F3D8DF] dark:border-[#3B2E40] bg-white dark:bg-[#221B25] overflow-hidden shadow-soft">
+      {/* Top Whiteboard Header Pill */}
       <div className="pointer-events-none absolute top-3.5 left-4 right-4 z-20 flex items-center justify-between">
-        <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-white/85 dark:bg-slate-900/90 backdrop-blur-md border border-pink-100 dark:border-slate-800 px-3.5 py-1.5 text-xs font-semibold text-[#1E293B] dark:text-white shadow-sm">
-          <Sparkles className="h-3.5 w-3.5 text-sky-400" />
-          <span>Co-op Sanrio Whiteboard</span>
+        <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-white/95 dark:bg-[#221B25]/95 border border-[#F3D8DF] dark:border-[#3B2E40] px-3.5 py-1.5 text-xs font-semibold text-[#2A2029] dark:text-[#FAF5F7] shadow-xs">
+          <Pencil className="h-3.5 w-3.5 text-rose-500" />
+          <span className="font-display font-bold">Papan Gambar Berdua</span>
           {toolMode === "stamp" && (
-            <span className="rounded-full bg-[#E9D5FF]/60 dark:bg-purple-950 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
+            <span className="rounded-full bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 text-[10px] font-semibold text-rose-600 dark:text-rose-300">
               Ketuk kanvas untuk menempel stiker
             </span>
           )}
@@ -431,7 +426,7 @@ export function CoopCanvasTab({
           <button
             type="button"
             onClick={handleDownloadArtwork}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/85 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-sky-200 hover:text-sky-600 shadow-sm transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/95 dark:bg-[#221B25]/95 border border-[#F3D8DF] dark:border-[#3B2E40] text-[#7A6277] dark:text-[#B8A6B5] hover:border-sky-300 hover:text-sky-600 shadow-xs transition-colors"
             title="Simpan gambar sebagai PNG"
           >
             <Download className="h-3.5 w-3.5" />
@@ -439,7 +434,7 @@ export function CoopCanvasTab({
           <button
             type="button"
             onClick={handleClearAll}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/85 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-rose-200 hover:text-rose-500 shadow-sm transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/95 dark:bg-[#221B25]/95 border border-[#F3D8DF] dark:border-[#3B2E40] text-[#7A6277] dark:text-[#B8A6B5] hover:border-rose-300 hover:text-rose-500 shadow-xs transition-colors"
             title="Bersihkan kanvas bersama"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -463,7 +458,7 @@ export function CoopCanvasTab({
           }`}
         />
 
-        {/* Animated Mini Stickers Layer (Synced via Supabase Realtime) */}
+        {/* Animated Mini Stickers Layer */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden z-10">
           <AnimatePresence>
             {stamps.map((stamp) => (
@@ -498,7 +493,7 @@ export function CoopCanvasTab({
                 className="h-3 w-3 rounded-full border-2 border-white shadow"
                 style={{ backgroundColor: partnerCursor.color }}
               />
-              <span className="rounded-full bg-[#334155]/90 px-2 py-0.5 text-[10px] font-medium text-white shadow">
+              <span className="rounded-full bg-[#2A2029]/90 px-2 py-0.5 text-[10px] font-medium text-white shadow">
                 {partnerCursor.name}
               </span>
             </motion.div>
@@ -506,24 +501,24 @@ export function CoopCanvasTab({
         </div>
       </div>
 
-      {/* Stamp Picker Popover Tray (19 Sanrio Characters + Heart/Star/Ribbon) */}
+      {/* Stamp Picker Popover Tray */}
       <AnimatePresence>
         {showStampTray && (
           <motion.div
             initial={{ opacity: 0, y: 12, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 w-[92%] max-w-md max-h-64 overflow-y-auto rounded-3xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-pink-100 dark:border-slate-800 p-3.5 shadow-pill"
+            className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 w-[92%] max-w-md max-h-64 overflow-y-auto rounded-[24px] bg-white/95 dark:bg-[#221B25]/95 border border-[#F3D8DF] dark:border-[#3B2E40] p-3.5 shadow-pill"
           >
             <div className="mb-2.5 flex items-center justify-between px-1">
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#1E293B] dark:text-white">
-                <Sparkles className="h-3.5 w-3.5 text-rose-400" />
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-display font-bold text-[#2A2029] dark:text-[#FAF5F7]">
+                <Stamp className="h-3.5 w-3.5 text-rose-500" />
                 <span>Pilih Stiker Sanrio ({STAMP_OPTIONS.length})</span>
               </span>
               <button
                 type="button"
                 onClick={() => setShowStampTray(false)}
-                className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 hover:bg-pink-50 dark:hover:bg-slate-700 hover:text-rose-500 transition-colors"
+                className="rounded-full bg-[#FBF4F6] dark:bg-[#2E2433] px-2.5 py-1 text-[10px] font-semibold text-[#7A6277] dark:text-[#B8A6B5] hover:bg-rose-50 hover:text-rose-500 transition-colors"
               >
                 Tutup
               </button>
@@ -544,8 +539,8 @@ export function CoopCanvasTab({
                     }}
                     className={`flex flex-col items-center justify-center gap-1 rounded-2xl px-1.5 py-2 text-[10px] font-medium transition-all ${
                       active
-                        ? "bg-[#FECDD3]/45 dark:bg-pink-950/70 text-rose-600 dark:text-pink-300 ring-1 ring-pink-200 dark:ring-pink-800 font-bold"
-                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                        ? "bg-rose-50 dark:bg-rose-950/70 text-rose-600 dark:text-rose-300 ring-1 ring-rose-300 dark:ring-rose-800 font-bold"
+                        : "text-[#7A6277] dark:text-[#B8A6B5] hover:bg-[#FBF4F6] dark:hover:bg-[#2E2433]"
                     }`}
                   >
                     <div className="scale-75 -my-1.5">
@@ -562,8 +557,8 @@ export function CoopCanvasTab({
         )}
       </AnimatePresence>
 
-      {/* Floating Minimalist Bottom Canvas Toolbar */}
-      <div className="absolute bottom-3.5 left-1/2 -translate-x-1/2 z-20 w-[94%] max-w-lg rounded-3xl bg-white/90 dark:bg-slate-900/95 backdrop-blur-md border border-pink-100 dark:border-slate-800 px-3 py-2.5 shadow-pill">
+      {/* Bottom Canvas Toolbar */}
+      <div className="absolute bottom-3.5 left-1/2 -translate-x-1/2 z-20 w-[94%] max-w-lg rounded-[24px] bg-white/95 dark:bg-[#221B25]/95 border border-[#F3D8DF] dark:border-[#3B2E40] px-3 py-2.5 shadow-pill">
         <div className="flex flex-wrap items-center justify-between gap-2">
           {/* Pastel Color Swatches */}
           <div className="flex items-center gap-1.5">
@@ -583,8 +578,8 @@ export function CoopCanvasTab({
                   title={swatch.name}
                   className={`h-6 w-6 rounded-full border transition-transform ${
                     isSelected
-                      ? "scale-115 ring-2 ring-offset-1 ring-sky-400 dark:ring-purple-400 border-white"
-                      : "border-slate-200 dark:border-slate-700 hover:scale-105"
+                      ? "scale-115 ring-2 ring-offset-1 ring-rose-400 dark:ring-rose-400 border-white"
+                      : "border-[#F3D8DF] dark:border-[#3B2E40] hover:scale-105"
                   }`}
                   style={{ backgroundColor: swatch.hex }}
                 />
@@ -592,10 +587,10 @@ export function CoopCanvasTab({
             })}
           </div>
 
-          <div className="h-5 w-px bg-slate-200/80 dark:bg-slate-700 hidden sm:block" />
+          <div className="h-5 w-px bg-[#F3D8DF] dark:bg-[#3B2E40] hidden sm:block" />
 
           {/* Stroke Width Selector */}
-          <div className="flex items-center gap-1 rounded-full bg-[#F8FAFC] dark:bg-slate-800 p-0.5 border border-slate-100 dark:border-slate-700">
+          <div className="flex items-center gap-1 rounded-full bg-[#FBF4F6] dark:bg-[#2E2433] p-0.5 border border-[#F3D8DF] dark:border-[#3B2E40]">
             {STROKE_SIZES.map((sz) => (
               <button
                 key={sz.label}
@@ -603,8 +598,8 @@ export function CoopCanvasTab({
                 onClick={() => setStrokeWidth(sz.width)}
                 className={`h-6 w-6 rounded-full text-[10px] font-bold transition-all ${
                   strokeWidth === sz.width
-                    ? "bg-[#1E293B] dark:bg-purple-600 text-white shadow-sm"
-                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                    ? "bg-rose-500 text-white shadow-xs"
+                    : "text-[#7A6277] dark:text-[#B8A6B5] hover:text-[#2A2029] dark:hover:text-white"
                 }`}
               >
                 {sz.label}
@@ -620,10 +615,10 @@ export function CoopCanvasTab({
                 setToolMode("brush");
                 setShowStampTray(false);
               }}
-              className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+              className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
                 toolMode === "brush"
-                  ? "bg-[#BAE6FD]/70 dark:bg-sky-900 text-[#1E293B] dark:text-white font-bold"
-                  : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  ? "bg-sky-100 dark:bg-sky-900 text-[#2A2029] dark:text-white font-bold"
+                  : "text-[#7A6277] dark:text-[#B8A6B5] hover:bg-[#FBF4F6] dark:hover:bg-[#2E2433]"
               }`}
               title="Kuas Gambar"
             >
@@ -636,10 +631,10 @@ export function CoopCanvasTab({
                 setToolMode("eraser");
                 setShowStampTray(false);
               }}
-              className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+              className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
                 toolMode === "eraser"
-                  ? "bg-[#FECDD3]/70 dark:bg-pink-900 text-rose-600 dark:text-pink-300 font-bold"
-                  : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  ? "bg-rose-100 dark:bg-rose-900 text-rose-600 dark:text-rose-200 font-bold"
+                  : "text-[#7A6277] dark:text-[#B8A6B5] hover:bg-[#FBF4F6] dark:hover:bg-[#2E2433]"
               }`}
               title="Penghapus"
             >
@@ -653,10 +648,10 @@ export function CoopCanvasTab({
                 setShowStampTray(nextTray);
                 setToolMode("stamp");
               }}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 h-8 text-xs font-semibold transition-colors ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 h-9 text-xs font-semibold transition-colors ${
                 toolMode === "stamp"
-                  ? "bg-[#E9D5FF]/80 dark:bg-purple-950/80 text-purple-900 dark:text-purple-300 ring-1 ring-purple-300 dark:ring-purple-700"
-                  : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  ? "bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 ring-1 ring-rose-300 dark:ring-rose-800"
+                  : "text-[#7A6277] dark:text-[#B8A6B5] hover:bg-[#FBF4F6] dark:hover:bg-[#2E2433]"
               }`}
               title="Stiker Sanrio Animasi"
             >

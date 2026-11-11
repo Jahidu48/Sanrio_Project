@@ -3,11 +3,12 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  Bell,
   ChevronRight,
+  Gamepad2,
+  Heart,
   ImageIcon,
   MessageCircleHeart,
-  Sparkles,
-  Gamepad2,
   Users2,
 } from "lucide-react";
 import { useAudio } from "@/context/AudioContext";
@@ -31,40 +32,34 @@ const BANNER_MODE_KEY = "cinnamelo_banner_mode_v1";
 const BANNERS = [
   {
     id: "supercute",
-    name: "Rainbow Adventure 🌈",
+    name: "Pelangi Sanrio",
     src: "/characters/sanrio-banner-supercute.jpg",
-    alt: "Sanrio Characters Super Cute Adventures with Rainbow and Flowers",
+    alt: "Ilustrasi Karakter Sanrio di Taman Pelangi",
   },
   {
     id: "balloons",
-    name: "Pastel Sky Balloons 🎈",
+    name: "Balon Udara",
     src: "/characters/sanrio-banner-balloons.jpg",
-    alt: "Sanrio Characters with Pastel Sky, Hot Air Balloons and Clouds",
+    alt: "Ilustrasi Karakter Sanrio dengan Balon Udara Pastel",
   },
 ];
 
 function getCharacterAnimation(id?: SanrioCharacterId) {
   if (id === "cinnamoroll") {
     return {
-      animate: { y: [0, -9, 0], rotate: [0, 2, -2, 0] },
-      transition: { repeat: Infinity, duration: 3.4, ease: "easeInOut" as const },
+      animate: { y: [0, -7, 0] },
+      transition: { repeat: Infinity, duration: 3.6, ease: "easeInOut" as const },
     };
   }
   if (id === "my-melody") {
     return {
-      animate: { y: [0, -5, 0], rotate: [-2, 3, -2], scale: [1, 1.02, 1] },
+      animate: { y: [0, -5, 0] },
       transition: { repeat: Infinity, duration: 4.0, ease: "easeInOut" as const },
     };
   }
-  if (id === "kuromi") {
-    return {
-      animate: { y: [0, -11, 0], scale: [1, 1.06, 1], rotate: [0, -3, 3, 0] },
-      transition: { repeat: Infinity, duration: 2.3, ease: "easeInOut" as const },
-    };
-  }
   return {
-    animate: { y: [0, -7, 0], rotate: [0, 1.5, -1.5, 0] },
-    transition: { repeat: Infinity, duration: 3.6, ease: "easeInOut" as const },
+    animate: { y: [0, -6, 0] },
+    transition: { repeat: Infinity, duration: 3.8, ease: "easeInOut" as const },
   };
 }
 
@@ -104,9 +99,7 @@ export function SanrioHeroBanner({
     setBannerMode(nextMode);
     try {
       window.localStorage.setItem(BANNER_MODE_KEY, nextMode);
-    } catch {
-      // ignore
-    }
+    } catch {}
   };
 
   const handleToggleBannerTheme = () => {
@@ -115,14 +108,14 @@ export function SanrioHeroBanner({
     setActiveBannerIndex(next);
     try {
       window.localStorage.setItem(BANNER_STORAGE_KEY, next.toString());
-    } catch {
-      // ignore
-    }
+    } catch {}
   };
 
   const currentBanner = BANNERS[activeBannerIndex];
   const metaA = getSanrioCharacter(profile.userACharacter, "cinnamoroll");
   const metaB = getSanrioCharacter(profile.userBCharacter, "my-melody");
+  const partnerName =
+    profile.role === "user_a" ? profile.userBName : profile.userAName;
 
   const greeting = useMemo(() => {
     const h = new Date().getHours();
@@ -133,63 +126,58 @@ export function SanrioHeroBanner({
   }, []);
 
   return (
-    <section className="relative overflow-hidden rounded-[32px] border border-[var(--border-color)] shadow-[0_16px_40px_-14px_rgba(244,114,182,0.22)] dark:shadow-[0_16px_40px_-14px_rgba(192,132,252,0.18)] bg-[var(--bg-card)] text-[var(--text-main)]">
-      {/* 1. Header Visual Display (Toggle between Duo Characters HD & 16:9 Landscape Artwork) */}
-      <div className="relative w-full overflow-hidden bg-sky-50 dark:bg-slate-950 pt-2 pb-1">
+    <section className="scrapbook-card overflow-hidden">
+      {/* 1. Panggung Pasangan (Toggle between Duo Scrapbook Stage & Panorama Artwork) */}
+      <div className="relative w-full overflow-hidden bg-[#FFFBF5] dark:bg-[#1E1721] pt-3 pb-2 px-3 sm:px-5">
         <AnimatePresence mode="wait">
           {bannerMode === "duo" ? (
             <motion.div
               key="banner-duo"
-              initial={{ opacity: 0, scale: 0.96 }}
+              initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ duration: 0.35 }}
-              className="w-full max-w-md mx-auto h-48 sm:h-56 flex items-center justify-center overflow-hidden rounded-3xl relative px-4"
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.25 }}
+              className="w-full max-w-lg mx-auto h-44 sm:h-52 flex items-center justify-center overflow-hidden rounded-3xl scrapbook-stitched bg-[#FFFDF9] dark:bg-[#251D29] relative px-4"
             >
-              {/* Soft romantic backdrop aura */}
-              <div className="absolute inset-0 bg-gradient-to-r from-sky-100/80 via-pink-100/70 to-purple-100/80 dark:from-slate-800/80 dark:via-purple-950/40 dark:to-slate-800/80 rounded-3xl border border-pink-200/50 dark:border-slate-700/60 shadow-inner" />
-
               <div className="relative z-10 flex items-center justify-around h-full w-full py-2">
-                {/* User A Character (e.g. Cinnamoroll floating) */}
+                {/* Partner A Card */}
                 <motion.div
-                  className="flex flex-col items-center justify-center h-full max-h-36 sm:max-h-44 w-1/3 text-center transform-gpu pointer-events-none"
+                  className="flex flex-col items-center justify-center h-full max-h-36 sm:max-h-40 w-1/3 text-center transform-gpu pointer-events-none"
                   {...getCharacterAnimation(profile.userACharacter)}
                 >
                   <img
                     src={metaA.svgPath}
                     alt={metaA.name}
-                    className="max-h-full w-auto object-contain mx-auto transition-transform duration-300 drop-shadow-md select-none pointer-events-none"
+                    className="max-h-24 sm:max-h-28 w-auto object-contain mx-auto select-none pointer-events-none"
                     draggable={false}
                   />
-                  <span className="mt-1 text-[10px] sm:text-[11px] font-bold text-sky-700 dark:text-sky-300 bg-white/90 dark:bg-slate-800/90 px-2 py-0.5 rounded-full border border-sky-200/60 dark:border-sky-800 shadow-xs truncate max-w-full">
+                  <span className="mt-1.5 text-xs font-bold text-[#2D232E] dark:text-[#FAF5F7] bg-[#E0F2FE] dark:bg-sky-950/80 px-2.5 py-0.5 rounded-full border border-sky-200 dark:border-sky-800 truncate max-w-full">
                     {profile.userAName}
                   </span>
                 </motion.div>
 
-                {/* Floating Love Heart Centerpiece */}
-                <motion.div
-                  animate={{ scale: [1, 1.25, 1], rotate: [0, 6, -6, 0] }}
-                  transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }}
-                  className="flex flex-col items-center justify-center text-2xl sm:text-3xl select-none transform-gpu pointer-events-none"
-                >
-                  <span>💖</span>
-                  <span className="text-[9px] font-bold text-pink-500 dark:text-pink-400 mt-0.5 tracking-wider uppercase">
-                    Forever
+                {/* Center Heart Stamp */}
+                <div className="flex flex-col items-center justify-center select-none pointer-events-none">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-950/60 border border-[#F3D8DF] dark:border-rose-800 text-rose-500">
+                    <Heart className="h-5 w-5 fill-rose-500" />
+                  </div>
+                  <span className="text-[11px] font-bold text-rose-500 dark:text-pink-300 mt-1">
+                    Selamanya
                   </span>
-                </motion.div>
+                </div>
 
-                {/* User B Character (e.g. My Melody / Kuromi) */}
+                {/* Partner B Card */}
                 <motion.div
-                  className="flex flex-col items-center justify-center h-full max-h-36 sm:max-h-44 w-1/3 text-center transform-gpu pointer-events-none"
+                  className="flex flex-col items-center justify-center h-full max-h-36 sm:max-h-40 w-1/3 text-center transform-gpu pointer-events-none"
                   {...getCharacterAnimation(profile.userBCharacter)}
                 >
                   <img
                     src={metaB.svgPath}
                     alt={metaB.name}
-                    className="max-h-full w-auto object-contain mx-auto transition-transform duration-300 drop-shadow-md select-none pointer-events-none"
+                    className="max-h-24 sm:max-h-28 w-auto object-contain mx-auto select-none pointer-events-none"
                     draggable={false}
                   />
-                  <span className="mt-1 text-[10px] sm:text-[11px] font-bold text-pink-700 dark:text-pink-300 bg-white/90 dark:bg-slate-800/90 px-2 py-0.5 rounded-full border border-pink-200/60 dark:border-pink-800 shadow-xs truncate max-w-full">
+                  <span className="mt-1.5 text-xs font-bold text-[#2D232E] dark:text-[#FAF5F7] bg-[#FFE4E6] dark:bg-rose-950/80 px-2.5 py-0.5 rounded-full border border-rose-200 dark:border-rose-800 truncate max-w-full">
                     {profile.userBName}
                   </span>
                 </motion.div>
@@ -198,11 +186,11 @@ export function SanrioHeroBanner({
           ) : (
             <motion.div
               key={currentBanner.id}
-              initial={{ opacity: 0, scale: 1.02 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.35 }}
-              className="relative w-full h-[180px] sm:h-[240px] md:h-[280px] overflow-hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="relative w-full h-[180px] sm:h-[230px] overflow-hidden rounded-2xl border border-[#F3D8DF] dark:border-[#3B2E40]"
             >
               <img
                 src={currentBanner.src}
@@ -210,116 +198,128 @@ export function SanrioHeroBanner({
                 className="w-full h-full object-cover object-center select-none pointer-events-none"
                 draggable={false}
               />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white dark:from-slate-900 to-transparent" />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Floating Top Controls: Banner View Toggle & Character Picker */}
-        <div className="absolute top-3 inset-x-4 z-20 flex items-center justify-between pointer-events-auto">
-          {/* Banner View Switcher Pill */}
+        {/* Top Controls: Banner View Toggle & Character Picker */}
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
-            <motion.button
+            <button
               type="button"
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.96 }}
               onClick={handleToggleBannerMode}
-              className="inline-flex items-center gap-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-white/70 dark:border-slate-700 px-3 py-1.5 text-[11px] font-bold text-[#1E293B] dark:text-white shadow-sm hover:bg-white transition-all"
-              title="Ganti Mode Tampilan (Karakter Berdua / Panorama 16:9)"
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-white dark:bg-[#221B25] border border-[#F3D8DF] dark:border-[#3B2E40] px-3 py-1 text-xs font-semibold text-[#2D232E] dark:text-[#FAF5F7] hover:border-rose-300 transition-colors cursor-pointer"
+              title="Ganti tampilan panggung"
             >
-              <Users2 className="h-3.5 w-3.5 text-pink-500" />
-              <span>{bannerMode === "duo" ? "Mode: Karakter Berdua" : "Mode: Panorama 16:9"}</span>
-            </motion.button>
+              <Users2 className="h-3.5 w-3.5 text-rose-500" />
+              <span>{bannerMode === "duo" ? "Tampilan: Berdua" : "Tampilan: Gambar"}</span>
+            </button>
 
             {bannerMode === "landscape" && (
-              <motion.button
+              <button
                 type="button"
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.96 }}
                 onClick={handleToggleBannerTheme}
-                className="inline-flex items-center gap-1 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-white/70 dark:border-slate-700 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 shadow-sm hover:bg-white transition-all"
-                title="Ganti Gambar Panorama"
+                className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-white dark:bg-[#221B25] border border-[#F3D8DF] dark:border-[#3B2E40] px-3 py-1 text-xs font-semibold text-[#6E5A68] dark:text-[#B8A6B5] hover:border-rose-300 transition-colors cursor-pointer"
+                title="Ganti gambar latar"
               >
                 <ImageIcon className="h-3.5 w-3.5 text-sky-500" />
-                <span className="hidden sm:inline">{currentBanner.name}</span>
-              </motion.button>
+                <span>{currentBanner.name}</span>
+              </button>
             )}
           </div>
 
-          {/* 19 Karakter Sanrio Modal Launcher */}
-          <motion.button
+          <button
             type="button"
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.96 }}
             onClick={() => {
               playPop();
               onOpenCharacterModal();
             }}
-            className="inline-flex items-center gap-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-white/70 dark:border-slate-700 px-3 py-1.5 text-[11px] font-bold text-[#1E293B] dark:text-white shadow-sm hover:bg-white transition-all"
+            className="inline-flex min-h-8 items-center gap-1 rounded-full bg-white dark:bg-[#221B25] border border-[#F3D8DF] dark:border-[#3B2E40] px-3 py-1 text-xs font-semibold text-[#2D232E] dark:text-[#FAF5F7] hover:border-rose-300 transition-colors cursor-pointer"
           >
-            <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-            <span>19 Karakter</span>
-            <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-          </motion.button>
+            <span>Ganti Karakter</span>
+            <ChevronRight className="h-3.5 w-3.5 text-[#6E5A68]" />
+          </button>
         </div>
       </div>
 
-      {/* 2. Glassmorphic Greeting & Interactive Couple Action Bar */}
-      <div className="relative z-10 px-5 sm:px-7 pb-6 pt-1 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      {/* 2. Greeting & Couple Action Bar */}
+      <div className="px-5 sm:px-7 pb-6 pt-4 border-t border-[#F3D8DF] dark:border-[#3B2E40] flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2 mb-1.5">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-[#BAE6FD]/40 dark:bg-sky-950/60 border border-sky-200/60 dark:border-sky-800 px-3 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300">
-              <span className={`h-2 w-2 rounded-full ${bothPartnersOnline ? "bg-rose-500 animate-pulse" : "bg-sky-400"}`} />
-              <span>{bothPartnersOnline ? "Kalian Sedang Online Bersama 💖" : "Ruang Cinta 2-Arah"}</span>
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-[#FFF5F7] dark:bg-[#2E2433] border border-[#F3D8DF] dark:border-[#3B2E40] px-3 py-1 text-xs font-semibold text-[#2D232E] dark:text-[#FAF5F7]">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  bothPartnersOnline ? "bg-emerald-500" : "bg-amber-400"
+                }`}
+              />
+              <span>
+                {bothPartnersOnline
+                  ? `${partnerName} sedang online bersama kamu`
+                  : `Menunggu ${partnerName} online`}
+              </span>
             </div>
+
             {!bothPartnersOnline && onSendWaitingPing && (
-              <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={() => { playPop(); onSendWaitingPing(); setWaitingPingSent(true); setTimeout(() => setWaitingPingSent(false), 3000); }} className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-pink-500 to-rose-400 hover:from-pink-600 hover:to-rose-500 text-white px-2.5 py-0.5 text-[10px] font-bold shadow-xs cursor-pointer active:scale-95 transition-all" title="Beri tahu pasangan bahwa kamu sedang menunggu di web"><Sparkles className="h-2.5 w-2.5" /><span>{waitingPingSent ? "Panggilan Terkirim! 💌" : "Panggil Pasangan (Aku Menunggu) 💌"}</span></motion.button>
+              <button
+                type="button"
+                onClick={() => {
+                  playPop();
+                  onSendWaitingPing();
+                  setWaitingPingSent(true);
+                  setTimeout(() => setWaitingPingSent(false), 3000);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-pink-300 px-3 py-1 text-xs font-bold hover:bg-rose-100 active:scale-95 transition-all cursor-pointer"
+                title="Kirim pengingat ke perangkat pasangan"
+              >
+                <Bell className="h-3 w-3" />
+                <span>
+                  {waitingPingSent
+                    ? "Panggilan terkirim!"
+                    : `Panggil ${partnerName}`}
+                </span>
+              </button>
             )}
           </div>
 
-          <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#1E293B] dark:text-white leading-tight">
+          <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-[#2D232E] dark:text-[#FAF5F7] leading-tight">
             {greeting}{" "}
-            <span className="text-[#0284C7] dark:text-pink-400">
-              {profile.userAName} &amp; {profile.userBName}! 👋
+            <span className="text-rose-500 dark:text-pink-400">
+              {profile.userAName} &amp; {profile.userBName}
             </span>
           </h2>
 
-          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-300 max-w-md">
+          <p className="mt-1 text-xs sm:text-sm text-[#6E5A68] dark:text-[#B8A6B5] max-w-md">
             {bothPartnersOnline
-              ? "Waktunya saling sapa di obrolan, kirim detak rindu, atau tantang pasanganmu main game!"
-              : "Setiap momen kecil berdua adalah memori berharga yang tersimpan selamanya."}
+              ? "Kalian berdua sedang aktif. Yuk ngobrol, kirim detak rindu, atau main bareng!"
+              : "Tinggalkan surat rahasia, catatan jurnal, atau coretan lucu untuk pasanganmu."}
           </p>
         </div>
 
-        {/* Quick Action Pill Buttons */}
+        {/* Quick Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <motion.button
+          <button
             type="button"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
             onClick={() => {
               playPop();
               onNavigateTab("chat");
             }}
-            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#0284C7] to-sky-500 dark:from-purple-600 dark:to-pink-600 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-[0_8px_20px_-4px_rgba(2,132,199,0.5)] dark:shadow-[0_8px_20px_-4px_rgba(168,85,247,0.45)] hover:opacity-95 transition-opacity"
+            className="inline-flex items-center gap-2 rounded-full bg-rose-500 hover:bg-rose-600 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-sm active:scale-[0.98] transition-all cursor-pointer"
           >
             <MessageCircleHeart className="h-4 w-4" />
-            <span>Buka Chat Berdua</span>
-          </motion.button>
+            <span>Buka Obrolan</span>
+          </button>
 
-          <motion.button
+          <button
             type="button"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
             onClick={() => {
               playPop();
               onNavigateTab("play");
             }}
-            className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-xs sm:text-sm font-bold text-[#1E293B] dark:text-white hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#FFF5F7] dark:bg-[#2E2433] border border-[#F3D8DF] dark:border-[#3B2E40] px-4 py-2.5 text-xs sm:text-sm font-bold text-[#2D232E] dark:text-[#FAF5F7] hover:border-rose-300 active:scale-[0.98] transition-all cursor-pointer"
           >
-            <Gamepad2 className="h-4 w-4 text-purple-500 dark:text-pink-400" />
-            <span>Main Game 🎮</span>
-          </motion.button>
+            <Gamepad2 className="h-4 w-4 text-rose-500 dark:text-pink-400" />
+            <span>Main Game</span>
+          </button>
         </div>
       </div>
     </section>

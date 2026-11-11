@@ -21,27 +21,27 @@ const TABS: Array<{
 }> = [
   {
     id: "home",
-    label: "Home",
+    label: "Beranda",
     icon: Heart,
-    accentBg: "bg-[#BAE6FD]/85 dark:bg-sky-900/80",
+    accentBg: "bg-[#BAE6FD]/90 dark:bg-sky-900/80",
   },
   {
     id: "chat",
-    label: "Chat",
+    label: "Obrolan",
     icon: MessageCircleHeart,
-    accentBg: "bg-[#FECDD3]/85 dark:bg-pink-900/80",
+    accentBg: "bg-[#FECDD3]/90 dark:bg-rose-900/80",
   },
   {
     id: "playground",
-    label: "Playground",
+    label: "Main",
     icon: Gamepad2,
-    accentBg: "bg-amber-100/90 dark:bg-amber-950/80",
+    accentBg: "bg-amber-100/90 dark:bg-amber-900/70",
   },
   {
     id: "journal",
-    label: "Journal",
+    label: "Jurnal",
     icon: BookHeart,
-    accentBg: "bg-[#E9D5FF]/85 dark:bg-purple-900/80",
+    accentBg: "bg-rose-100/90 dark:bg-[#3B2E40]",
   },
 ];
 
@@ -67,7 +67,7 @@ export function BottomTabBar({
         transform: "translateZ(0)",
       }}
     >
-      <div className="pointer-events-auto flex w-full max-w-lg items-center justify-between rounded-full bg-white/92 dark:bg-slate-900/92 backdrop-blur-md border border-pink-100 dark:border-slate-800 p-1.5 shadow-pill">
+      <div className="pointer-events-auto flex w-full max-w-lg items-center justify-between rounded-full bg-[#FFFDF9]/95 dark:bg-[#221B25]/95 border-2 border-[#F3D8DF] dark:border-[#3B2E40] p-1.5 shadow-pill">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive =
@@ -80,7 +80,7 @@ export function BottomTabBar({
               key={tab.id}
               type="button"
               onClick={() => handleTabClick(tab.id)}
-              className="relative flex-1 flex items-center justify-center gap-1 rounded-full py-2 px-1 text-xs font-semibold active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation focus:outline-none cursor-pointer"
+              className="relative flex-1 flex min-h-10 items-center justify-center gap-1.5 rounded-full py-2 px-1 text-xs font-semibold active:scale-[0.96] transition-transform duration-100 ease-out select-none touch-manipulation cursor-pointer"
             >
               {isActive && (
                 <motion.span
@@ -91,23 +91,23 @@ export function BottomTabBar({
                     damping: 30,
                     mass: 0.8,
                   }}
-                  className={`absolute inset-0 rounded-full ${tab.accentBg} border border-white/80 dark:border-slate-700 shadow-sm`}
+                  className={`absolute inset-0 rounded-full ${tab.accentBg} border border-white/80 dark:border-[#4E3B4D] shadow-2xs`}
                 />
               )}
 
-              <span className="relative z-10 flex items-center gap-1 text-[#1E293B] dark:text-white">
+              <span className="relative z-10 flex items-center gap-1 text-[#2D232E] dark:text-[#FAF5F7]">
                 <Icon
                   className={`h-4 w-4 transition-transform duration-100 ${
                     isActive
-                      ? "scale-110 text-[#1E293B] dark:text-white"
-                      : "text-slate-400 dark:text-slate-500"
+                      ? "scale-110 text-[#2D232E] dark:text-white"
+                      : "text-[#6E5A68] dark:text-[#B8A6B5]"
                   }`}
                 />
                 <span
-                  className={`text-[11px] ${
+                  className={`text-xs ${
                     isActive
-                      ? "font-bold text-[#1E293B] dark:text-white"
-                      : "text-slate-500 dark:text-slate-400"
+                      ? "font-bold text-[#2D232E] dark:text-white"
+                      : "text-[#6E5A68] dark:text-[#B8A6B5]"
                   }`}
                 >
                   {tab.label}
@@ -115,12 +115,12 @@ export function BottomTabBar({
 
                 {/* Prompt badge on Home */}
                 {tab.id === "home" && hasUnreadPrompt && !isActive && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
+                  <span className="h-2 w-2 rounded-full bg-rose-500" />
                 )}
 
                 {/* Unread badge on Chat */}
                 {tab.id === "chat" && unreadChatCount > 0 && !isActive && (
-                  <span className="flex h-3.5 min-w-3.5 px-0.5 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white shadow-xs">
+                  <span className="flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white">
                     {unreadChatCount}
                   </span>
                 )}

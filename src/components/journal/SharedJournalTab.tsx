@@ -4,12 +4,14 @@ import React, { useMemo, useState } from "react";
 import { AnimatePresence, motion, useScroll, useSpring, useTransform } from "framer-motion";
 import {
   ArrowLeft,
+  BookOpen,
   Check,
   CheckSquare,
   FileText,
+  Gift,
+  Heart,
   Pin,
   Plus,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 import { KuromiCharacter } from "@/components/characters/KuromiCharacter";
@@ -64,11 +66,9 @@ export function SharedJournalTab({
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [kuromiCelebrateKey, setKuromiCelebrateKey] = useState(0);
 
-  // Bucket list form state
   const [bucketTitle, setBucketTitle] = useState("");
   const [bucketCategory, setBucketCategory] = useState<BucketCategory>("date");
 
-  // Scroll-reactive Kuromi & My Melody perched atop header
   const { scrollY } = useScroll();
   const smoothScroll = useSpring(scrollY, { stiffness: 220, damping: 24 });
   const kuromiScrollY = useTransform(smoothScroll, (v) =>
@@ -132,7 +132,7 @@ export function SharedJournalTab({
 
   return (
     <div className="space-y-5 pb-8">
-      {/* Animated Header with Kuromi & My Melody Perched on Top */}
+      {/* Header with Kuromi & My Melody Perched on Top */}
       <div className="relative pt-14">
         <div className="pointer-events-none absolute top-0 left-0 right-0 z-20 flex items-end justify-center gap-4">
           <motion.div
@@ -140,7 +140,7 @@ export function SharedJournalTab({
             className="pointer-events-auto -mb-5"
           >
             <KuromiCharacter
-              size={92}
+              size={90}
               swingLegs
               celebrateKey={kuromiCelebrateKey}
             />
@@ -151,34 +151,32 @@ export function SharedJournalTab({
             className="pointer-events-auto -mb-5"
           >
             <MyMelodyCharacter
-              size={90}
+              size={88}
               swingLegs
               characterId={profile.userBCharacter || "my-melody"}
             />
           </motion.div>
         </div>
 
-        <section className="saas-glow-card relative z-10 px-6 pt-9 pb-5 text-center space-y-4">
-          <div className="pointer-events-none absolute -top-12 left-1/3 h-36 w-36 rounded-full bg-[#FECDD3]/30 blur-3xl" />
+        <section className="scrapbook-card relative z-10 px-6 pt-9 pb-5 text-center space-y-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#1E293B] dark:text-white">
-              Jurnal Bersama {profile.userAName} &amp; {profile.userBName}
+            <h1 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-[#2D232E] dark:text-[#FAF5F7]">
+              Jurnal Kita: {profile.userAName} &amp; {profile.userBName}
             </h1>
-            <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-              Tulis buku catatan bareng secara <em>live</em> dan wujudkan daftar{" "}
-              <em>Bucket List</em> impian kalian berdua.
+            <p className="mt-1 text-xs sm:text-sm text-[#6E5A68] dark:text-[#B8A6B5] max-w-md mx-auto">
+              Simpan cerita berdua dan tulis daftar impian yang ingin kalian wujudkan.
             </p>
           </div>
 
-          {/* Segmented Mode Switcher: Catatan Bersama vs Bucket List */}
-          <div className="inline-flex rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-pink-100 dark:border-slate-700 p-1">
+          {/* Segmented Mode Switcher */}
+          <div className="inline-flex rounded-full bg-[#FFF5F7] dark:bg-[#2E2433] border border-[#F3D8DF] dark:border-[#3B2E40] p-1">
             <button
               type="button"
               onClick={() => setSection("notes")}
-              className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-all ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
                 section === "notes"
-                  ? "bg-[#1E293B] dark:bg-purple-600 text-white shadow-sm"
-                  : "text-slate-500 dark:text-slate-400 hover:text-[#1E293B] dark:hover:text-white"
+                  ? "bg-rose-500 text-white shadow-2xs"
+                  : "text-[#6E5A68] dark:text-[#B8A6B5] hover:text-[#2D232E] dark:hover:text-white"
               }`}
             >
               <FileText className="h-3.5 w-3.5" />
@@ -191,41 +189,38 @@ export function SharedJournalTab({
                 setSection("bucket");
                 setActiveNoteId(null);
               }}
-              className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-all ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
                 section === "bucket"
-                  ? "bg-[#1E293B] dark:bg-purple-600 text-white shadow-sm"
-                  : "text-slate-500 dark:text-slate-400 hover:text-[#1E293B] dark:hover:text-white"
+                  ? "bg-rose-500 text-white shadow-2xs"
+                  : "text-[#6E5A68] dark:text-[#B8A6B5] hover:text-[#2D232E] dark:hover:text-white"
               }`}
             >
               <CheckSquare className="h-3.5 w-3.5" />
               <span>
-                Bucket List ({completedCount}/{bucketItems.length})
+                Daftar Impian ({completedCount}/{bucketItems.length})
               </span>
             </button>
           </div>
         </section>
       </div>
 
-      {/* ==================================================================== */}
-      {/* MODE 1: COLLABORATIVE SHARED NOTES                                   */}
-      {/* ==================================================================== */}
+      {/* MODE 1: COLLABORATIVE SHARED NOTES */}
       {section === "notes" && (
         <AnimatePresence mode="wait">
           {activeNote ? (
-            /* Live Collaborative Note Editor */
             <motion.section
               key={`editor-${activeNote.id}`}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              className="rounded-3xl border border-pink-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-6 shadow-card space-y-4"
+              className="scrapbook-card p-6 space-y-4"
             >
               {/* Editor Top Bar */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#F3D8DF] dark:border-[#3B2E40]">
                 <button
                   type="button"
                   onClick={() => setActiveNoteId(null)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 px-3.5 py-1.5 text-xs font-semibold text-[#1E293B] dark:text-white hover:border-pink-200"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#FFF5F7] dark:bg-[#2E2433] border border-[#F3D8DF] dark:border-[#3B2E40] px-3.5 py-1.5 text-xs font-semibold text-[#2D232E] dark:text-white hover:border-rose-300 cursor-pointer"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
                   <span>Semua Catatan</span>
@@ -233,7 +228,7 @@ export function SharedJournalTab({
 
                 <div className="flex items-center gap-2">
                   {isPartnerTypingInActiveNote && partnerTyping && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FECDD3]/45 dark:bg-pink-950/60 px-3 py-1 text-[11px] font-semibold text-rose-600 dark:text-pink-300 animate-pulse">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 dark:bg-rose-950/60 px-3 py-1 text-xs font-semibold text-rose-600 dark:text-pink-300">
                       ✍️ {partnerTyping.name} sedang mengetik...
                     </span>
                   )}
@@ -246,14 +241,14 @@ export function SharedJournalTab({
                         is_pinned: !activeNote.is_pinned,
                       })
                     }
-                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
                       activeNote.is_pinned
-                        ? "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
-                        : "bg-[#F8FAFC] dark:bg-slate-800 border-slate-200/80 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-[#1E293B] dark:hover:text-white"
+                        ? "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200"
+                        : "bg-[#FFF5F7] dark:bg-[#2E2433] border-[#F3D8DF] dark:border-[#3B2E40] text-[#6E5A68] dark:text-[#B8A6B5]"
                     }`}
                   >
                     <Pin className="h-3.5 w-3.5" />
-                    <span>{activeNote.is_pinned ? "Dipin" : "Pin"}</span>
+                    <span>{activeNote.is_pinned ? "Disematkan" : "Sematkan"}</span>
                   </button>
 
                   <button
@@ -262,10 +257,11 @@ export function SharedJournalTab({
                       await onDeleteNote(activeNote.id);
                       setActiveNoteId(null);
                     }}
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-400 hover:border-rose-200 hover:text-rose-500 dark:hover:text-pink-400"
+                    aria-label="Hapus catatan"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FFF5F7] dark:bg-[#2E2433] border border-[#F3D8DF] dark:border-[#3B2E40] text-[#6E5A68] hover:border-rose-300 hover:text-rose-500 cursor-pointer"
                     title="Hapus catatan"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -280,10 +276,10 @@ export function SharedJournalTab({
                       key={m}
                       type="button"
                       onClick={() => onUpsertNote({ ...activeNote, mood: m })}
-                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition-all ${
+                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer ${
                         selected
                           ? `${meta.badgeClass} ring-1 ring-current`
-                          : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                          : "bg-[#FFF5F7] dark:bg-[#2E2433] text-[#6E5A68] dark:text-[#B8A6B5]"
                       }`}
                     >
                       <span>{meta.emoji}</span>
@@ -300,8 +296,8 @@ export function SharedJournalTab({
                 onChange={(e) =>
                   onUpsertNote({ ...activeNote, title: e.target.value })
                 }
-                placeholder="Judul catatan bersama..."
-                className="w-full border-0 bg-transparent text-lg sm:text-xl font-bold text-[#1E293B] dark:text-white placeholder:text-slate-400 focus:outline-none"
+                placeholder="Judul catatan..."
+                className="font-display w-full border-0 bg-transparent text-lg sm:text-xl font-bold text-[#2D232E] dark:text-white placeholder:text-[#6E5A68]/60 focus:outline-none"
               />
 
               {/* Live Collaborative Textarea */}
@@ -311,14 +307,14 @@ export function SharedJournalTab({
                 onChange={(e) =>
                   onUpsertNote({ ...activeNote, content: e.target.value })
                 }
-                placeholder="Ketik cerita, daftar tempat kencan, resep masakan, atau surat manis di sini... Pasanganmu langsung melihat ketikanmu secara realtime! ☁️🎀"
-                className="w-full resize-y rounded-2xl border border-pink-100/80 dark:border-slate-700 bg-[#F8FAFC]/70 dark:bg-slate-800/80 p-4 text-sm leading-7 text-[#1E293B] dark:text-white placeholder:text-slate-400 focus:border-pink-200 dark:focus:border-purple-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none"
+                placeholder="Tulis cerita, tempat kencan favorit, atau surat kecil di sini..."
+                className="w-full resize-y rounded-2xl border border-[#F3D8DF] dark:border-[#3B2E40] bg-[#FFFBF5] dark:bg-[#18131A] p-4 text-sm leading-7 text-[#2D232E] dark:text-white placeholder:text-[#6E5A68]/60 focus:border-rose-400 focus:outline-none"
               />
 
-              <div className="flex items-center justify-between text-[11px] text-slate-400">
+              <div className="flex items-center justify-between text-xs text-[#6E5A68] dark:text-[#B8A6B5]">
                 <span>
-                  Tersimpan otomatis ke kedua layar • Diedit terakhir oleh{" "}
-                  <strong className="text-slate-600 dark:text-slate-200 font-bold">
+                  Tersimpan otomatis • Ditulis oleh{" "}
+                  <strong className="text-[#2D232E] dark:text-white font-bold">
                     {activeNote.last_edited_by}
                   </strong>
                 </span>
@@ -344,10 +340,10 @@ export function SharedJournalTab({
                   <button
                     type="button"
                     onClick={() => setMoodFilter("all")}
-                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer ${
+                    className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
                       moodFilter === "all"
-                        ? "bg-gradient-to-r from-pink-500 to-rose-400 dark:from-purple-600 dark:to-pink-600 text-white shadow-xs"
-                        : "bg-white dark:bg-slate-800 border border-pink-100 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-pink-50 dark:hover:bg-slate-700"
+                        ? "bg-rose-500 text-white shadow-2xs"
+                        : "bg-white dark:bg-[#221B25] border border-[#F3D8DF] dark:border-[#3B2E40] text-[#6E5A68] dark:text-[#B8A6B5] hover:border-rose-300"
                     }`}
                   >
                     Semua
@@ -357,10 +353,10 @@ export function SharedJournalTab({
                       key={m}
                       type="button"
                       onClick={() => setMoodFilter(m)}
-                      className={`rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer ${
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
                         moodFilter === m
                           ? `${MOOD_META[m].badgeClass} ring-1 ring-current`
-                          : "bg-white dark:bg-slate-800 border border-pink-100 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-pink-50 dark:hover:bg-slate-700"
+                          : "bg-white dark:bg-[#221B25] border border-[#F3D8DF] dark:border-[#3B2E40] text-[#6E5A68] dark:text-[#B8A6B5] hover:border-rose-300"
                       }`}
                     >
                       {MOOD_META[m].emoji} {MOOD_META[m].label}
@@ -368,26 +364,37 @@ export function SharedJournalTab({
                   ))}
                 </div>
 
-                <motion.button
+                <button
                   type="button"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.96 }}
                   onClick={handleNewNote}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-400 dark:from-purple-600 dark:to-pink-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:opacity-95 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-rose-500 hover:bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-sm active:scale-95 transition-all cursor-pointer"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  <span>Catatan Baru</span>
-                </motion.button>
+                  <span>Tulis Catatan Baru</span>
+                </button>
               </div>
 
               {sortedNotes.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-pink-200 dark:border-slate-700 bg-white/70 dark:bg-slate-800/60 p-10 text-center space-y-2">
-                  <p className="text-sm font-bold text-slate-800 dark:text-white">
-                    Belum ada catatan di kategori ini ☁️
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Klik tombol &ldquo;Catatan Baru&rdquo; untuk mulai menulis bersama pasanganmu!
-                  </p>
+                <div className="rounded-3xl scrapbook-stitched bg-[#FFFBF5] dark:bg-[#221B25] p-10 text-center space-y-3">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 dark:bg-[#2E2433] border border-[#F3D8DF] dark:border-[#3B2E40] text-rose-500">
+                    <BookOpen className="h-6 w-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="font-display text-base font-bold text-[#2D232E] dark:text-white">
+                      Jurnal kalian masih kosong
+                    </p>
+                    <p className="text-xs text-[#6E5A68] dark:text-[#B8A6B5] max-w-sm mx-auto">
+                      Mulai tulis cerita kencan pertama, daftar makanan favorit, atau surat kecil untuk pasanganmu.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleNewNote}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-rose-500 hover:bg-rose-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Buat Catatan Pertama</span>
+                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -399,16 +406,15 @@ export function SharedJournalTab({
                       Date.now() - partnerTyping.timestamp < 3500;
 
                     return (
-                      <motion.div
+                      <div
                         key={note.id}
-                        whileHover={{ y: -2 }}
                         onClick={() => setActiveNoteId(note.id)}
-                        className={`saas-glow-card cursor-pointer border ${meta.cardBorder} p-5 flex flex-col justify-between gap-3`}
+                        className={`scrapbook-card cursor-pointer border ${meta.cardBorder} p-5 flex flex-col justify-between gap-3`}
                       >
                         <div className="space-y-2">
                           <div className="flex items-center justify-between gap-2">
                             <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${meta.badgeClass}`}
+                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${meta.badgeClass}`}
                             >
                               <span>{meta.emoji}</span>
                               <span>{meta.label}</span>
@@ -416,7 +422,7 @@ export function SharedJournalTab({
 
                             <div className="flex items-center gap-1.5">
                               {partnerActiveHere && (
-                                <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-500 animate-pulse">
+                                <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-500">
                                   ✍️ Sedang diketik
                                 </span>
                               )}
@@ -426,22 +432,22 @@ export function SharedJournalTab({
                             </div>
                           </div>
 
-                          <h3 className="text-base font-bold text-[#1E293B] dark:text-white line-clamp-1">
+                          <h3 className="font-display text-base font-bold text-[#2D232E] dark:text-white line-clamp-1">
                             {note.title || "Tanpa Judul"}
                           </h3>
 
-                          <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-3 whitespace-pre-line">
-                            {note.content || "Ketuk untuk mulai menulis bersama..."}
+                          <p className="text-xs leading-relaxed text-[#6E5A68] dark:text-[#B8A6B5] line-clamp-3 whitespace-pre-line">
+                            {note.content || "Ketuk untuk mulai menulis..."}
                           </p>
                         </div>
 
-                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+                        <div className="pt-2 border-t border-[#F3D8DF] dark:border-[#3B2E40] flex items-center justify-between text-xs text-[#6E5A68] dark:text-[#B8A6B5]">
                           <span>Oleh {note.last_edited_by}</span>
-                          <span className="text-rose-400 dark:text-pink-400 font-medium">
-                            Buka &amp; Edit →
+                          <span className="text-rose-500 dark:text-pink-300 font-semibold">
+                            Buka →
                           </span>
                         </div>
-                      </motion.div>
+                      </div>
                     );
                   })}
                 </div>
@@ -451,9 +457,7 @@ export function SharedJournalTab({
         </AnimatePresence>
       )}
 
-      {/* ==================================================================== */}
-      {/* MODE 2: COUPLE BUCKET LIST & WISHLIST                                */}
-      {/* ==================================================================== */}
+      {/* MODE 2: COUPLE WISHLIST / DAFTAR IMPIAN */}
       {section === "bucket" && (
         <motion.section
           initial={{ opacity: 0, y: 8 }}
@@ -461,25 +465,25 @@ export function SharedJournalTab({
           className="space-y-4"
         >
           {/* Progress Card */}
-          <div className="rounded-3xl border border-pink-100 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-5 shadow-card space-y-3">
+          <div className="scrapbook-card p-5 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-rose-400 dark:text-pink-400" />
-                <span className="text-sm font-bold text-[#1E293B] dark:text-white">
-                  Progress Impian Berdua
+                <Heart className="h-4 w-4 text-rose-500 fill-rose-400" />
+                <span className="font-display text-sm font-bold text-[#2D232E] dark:text-white">
+                  Daftar Impian Kita
                 </span>
               </div>
-              <span className="text-xs font-bold text-rose-500 dark:text-pink-400">
-                {completedCount} / {bucketItems.length} tercapai ({bucketProgress}%)
+              <span className="text-xs font-bold text-rose-500 dark:text-pink-300">
+                {completedCount} dari {bucketItems.length} terwujud ({bucketProgress}%)
               </span>
             </div>
 
-            <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#F8FAFC] dark:bg-slate-800 border border-pink-100 dark:border-slate-700">
+            <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#FFF5F7] dark:bg-[#2E2433] border border-[#F3D8DF] dark:border-[#3B2E40]">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${bucketProgress}%` }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
-                className="h-full rounded-full bg-gradient-to-r from-[#BAE6FD] via-[#FECDD3] to-[#E9D5FF]"
+                transition={{ duration: 0.4, ease: "easeOut" }}
+                className="h-full rounded-full bg-rose-400"
               />
             </div>
 
@@ -493,10 +497,10 @@ export function SharedJournalTab({
                       key={cat}
                       type="button"
                       onClick={() => setBucketCategory(cat)}
-                      className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-all ${
+                      className={`rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer ${
                         bucketCategory === cat
                           ? `${meta.pillClass} ring-1 ring-current`
-                          : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                          : "bg-[#FFF5F7] dark:bg-[#2E2433] text-[#6E5A68] dark:text-[#B8A6B5]"
                       }`}
                     >
                       {meta.emoji} {meta.label}
@@ -510,13 +514,13 @@ export function SharedJournalTab({
                   type="text"
                   value={bucketTitle}
                   onChange={(e) => setBucketTitle(e.target.value)}
-                  placeholder="Tambah wishlist kencan / impian baru kita..."
-                  className="flex-1 rounded-full border border-pink-100 dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-800 px-4 py-2.5 text-xs text-[#1E293B] dark:text-white placeholder:text-slate-400 focus:border-pink-300 dark:focus:border-purple-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none"
+                  placeholder="Tulis rencana kencan atau impian baru..."
+                  className="flex-1 rounded-full border border-[#F3D8DF] dark:border-[#3B2E40] bg-[#FFFBF5] dark:bg-[#18131A] px-4 py-2.5 text-xs text-[#2D232E] dark:text-white placeholder:text-[#6E5A68]/60 focus:border-rose-400 focus:outline-none"
                 />
                 <button
                   type="submit"
                   disabled={!bucketTitle.trim()}
-                  className="inline-flex items-center gap-1 rounded-full bg-[#1E293B] dark:bg-purple-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"
+                  className="inline-flex items-center gap-1 rounded-full bg-rose-500 hover:bg-rose-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40 cursor-pointer"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>Tambah</span>
@@ -526,74 +530,90 @@ export function SharedJournalTab({
           </div>
 
           {/* Bucket Items Checklist */}
-          <div className="space-y-2.5">
-            {bucketItems.map((item) => {
-              const catMeta =
-                BUCKET_CATEGORY_META[item.category] || BUCKET_CATEGORY_META.date;
-              return (
-                <motion.div
-                  key={item.id}
-                  layout
-                  className={`flex items-center justify-between gap-3 rounded-2xl border p-4 transition-all ${
-                    item.is_completed
-                      ? "border-pink-100/60 dark:border-slate-800 bg-[#F8FAFC]/80 dark:bg-slate-900/60"
-                      : "border-pink-100 dark:border-slate-700 bg-white/95 dark:bg-slate-800/90 shadow-sm"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => handleToggleBucket(item)}
-                    className="flex flex-1 items-start gap-3 text-left"
+          {bucketItems.length === 0 ? (
+            <div className="rounded-3xl scrapbook-stitched bg-[#FFFBF5] dark:bg-[#221B25] p-10 text-center space-y-2">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 dark:bg-[#2E2433] border border-[#F3D8DF] dark:border-[#3B2E40] text-rose-500">
+                <Gift className="h-6 w-6" />
+              </div>
+              <p className="font-display text-base font-bold text-[#2D232E] dark:text-white">
+                Belum ada daftar impian
+              </p>
+              <p className="text-xs text-[#6E5A68] dark:text-[#B8A6B5] max-w-sm mx-auto">
+                Tulis tempat yang ingin kalian kunjungi, makanan yang ingin dicoba, atau rencana seru di kolom atas.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {bucketItems.map((item) => {
+                const catMeta =
+                  BUCKET_CATEGORY_META[item.category] ||
+                  BUCKET_CATEGORY_META.date;
+                return (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    className={`flex items-center justify-between gap-3 rounded-2xl border p-4 transition-all ${
+                      item.is_completed
+                        ? "border-[#F3D8DF]/60 dark:border-[#3B2E40] bg-[#FFFBF5]/80 dark:bg-[#1E1721]"
+                        : "border-[#F3D8DF] dark:border-[#3B2E40] bg-white dark:bg-[#221B25] shadow-2xs"
+                    }`}
                   >
-                    <span
-                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg border transition-colors ${
-                        item.is_completed
-                          ? "border-rose-400 bg-rose-400 text-white"
-                          : "border-pink-200 dark:border-slate-600 bg-white dark:bg-slate-700"
-                      }`}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleBucket(item)}
+                      className="flex flex-1 items-start gap-3 text-left cursor-pointer"
                     >
-                      {item.is_completed && <Check className="h-3.5 w-3.5" />}
-                    </span>
-
-                    <div className="space-y-1">
-                      <p
-                        className={`text-sm font-semibold ${
+                      <span
+                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg border transition-colors ${
                           item.is_completed
-                            ? "line-through text-slate-400 dark:text-slate-500"
-                            : "text-[#1E293B] dark:text-white"
+                            ? "border-rose-500 bg-rose-500 text-white"
+                            : "border-[#F3D8DF] dark:border-[#4E3B4D] bg-white dark:bg-[#2E2433]"
                         }`}
                       >
-                        {item.title}
-                      </p>
+                        {item.is_completed && <Check className="h-3.5 w-3.5" />}
+                      </span>
 
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${catMeta.pillClass}`}
+                      <div className="space-y-1">
+                        <p
+                          className={`text-sm font-semibold ${
+                            item.is_completed
+                              ? "line-through text-[#6E5A68]/70 dark:text-[#B8A6B5]/60"
+                              : "text-[#2D232E] dark:text-white"
+                          }`}
                         >
-                          {catMeta.emoji} {catMeta.label}
-                        </span>
-                        <span>Ditulis {item.created_by}</span>
-                        {item.is_completed && item.completed_by && (
-                          <span className="text-rose-500 font-medium">
-                            • Dicentang {item.completed_by} ✨
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </button>
+                          {item.title}
+                        </p>
 
-                  <button
-                    type="button"
-                    onClick={() => onDeleteBucketItem(item.id)}
-                    className="rounded-full p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-colors"
-                    title="Hapus item"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </motion.div>
-              );
-            })}
-          </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-[#6E5A68] dark:text-[#B8A6B5]">
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${catMeta.pillClass}`}
+                          >
+                            {catMeta.emoji} {catMeta.label}
+                          </span>
+                          <span>Ditulis {item.created_by}</span>
+                          {item.is_completed && item.completed_by && (
+                            <span className="text-rose-500 font-medium">
+                              • Terwujud bersama {item.completed_by}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onDeleteBucketItem(item.id)}
+                      aria-label="Hapus impian"
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-[#6E5A68] hover:bg-rose-50 hover:text-rose-500 transition-colors cursor-pointer"
+                      title="Hapus item"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
         </motion.section>
       )}
     </div>

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, Edit3, Heart, Smile, Sparkles, X } from "lucide-react";
+import { ChevronDown, Edit3, Smile, X } from "lucide-react";
 import { useAudio } from "@/context/AudioContext";
 import {
   getSanrioCharacter,
@@ -33,42 +33,42 @@ const PRESET_MOODS: Array<{
     characterId: "cinnamoroll",
     statusText: "Kangen ☁️",
     emoji: "☁️",
-    label: "Cinnamoroll: Kangen ☁️",
+    label: "Kangen ☁️",
   },
   {
     id: "peluk",
     characterId: "kuromi",
-    statusText: "Butuh Peluk 💜",
-    emoji: "💜",
-    label: "Kuromi: Butuh Peluk 💜",
+    statusText: "Butuh Peluk 🎀",
+    emoji: "🎀",
+    label: "Butuh Peluk 🎀",
   },
   {
     id: "semangat",
     characterId: "my-melody",
     statusText: "Semangat! 🌸",
     emoji: "🌸",
-    label: "My Melody: Semangat! 🌸",
+    label: "Semangat! 🌸",
   },
   {
     id: "lapar",
     characterId: "pompompurin",
     statusText: "Lapar 🍮",
     emoji: "🍮",
-    label: "Pompompurin: Lapar 🍮",
+    label: "Lapar 🍮",
   },
   {
     id: "jalan",
     characterId: "pochacco",
     statusText: "Jalan-jalan 🐾",
     emoji: "🐾",
-    label: "Pochacco: Jalan-jalan 🐾",
+    label: "Jalan-jalan 🐾",
   },
   {
     id: "happy",
     characterId: "hello-kitty",
-    statusText: "Happy Banget ✨",
-    emoji: "✨",
-    label: "Hello Kitty: Happy Banget ✨",
+    statusText: "Senang Banget 🍓",
+    emoji: "🍓",
+    label: "Senang Banget 🍓",
   },
 ];
 
@@ -122,7 +122,7 @@ export function SanrioMoodPill({
     onUpdateMood({
       characterId: myCharId,
       statusText: customText.trim(),
-      emoji: "💖",
+      emoji: "🌸",
     });
     setCustomText("");
     setOpenModal(false);
@@ -132,70 +132,67 @@ export function SanrioMoodPill({
     <>
       {/* Interactive Mood Bar Widget */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* My Mood Pill (Clickable) */}
-        <motion.button
+        {/* My Mood Pill */}
+        <button
           type="button"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.97 }}
           onClick={() => {
             playPop();
             setOpenModal(true);
           }}
-          className="inline-flex items-center gap-2 rounded-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-pink-200/80 dark:border-purple-800/80 px-3.5 py-1.5 text-xs font-semibold text-[#1E293B] dark:text-slate-100 shadow-sm hover:border-pink-300 dark:hover:border-purple-600 transition-all cursor-pointer"
-          title="Klik untuk mengubah mood kamu sekarang"
+          className="inline-flex min-h-9 items-center gap-2 rounded-full bg-white dark:bg-[#221B25] border border-[#F3D8DF] dark:border-[#3B2E40] px-3.5 py-1.5 text-xs font-semibold text-[#2D232E] dark:text-[#FAF5F7] shadow-2xs hover:border-rose-300 transition-colors cursor-pointer"
+          title="Ketuk untuk mengganti suasana hatimu"
         >
           <img
             src={myMeta.svgPath}
             alt={myMeta.name}
             className="h-4 w-4 object-contain"
           />
-          <span className="text-slate-500 dark:text-slate-400 font-normal">
+          <span className="text-[#6E5A68] dark:text-[#B8A6B5] font-normal">
             {myName}:
           </span>
-          <span className="text-pink-600 dark:text-pink-300 font-bold flex items-center gap-1">
+          <span className="text-rose-600 dark:text-pink-300 font-bold flex items-center gap-1">
             {myMood.statusText}
           </span>
-          <ChevronDown className="h-3 w-3 text-slate-400" />
-        </motion.button>
+          <ChevronDown className="h-3.5 w-3.5 text-[#6E5A68]" />
+        </button>
 
-        {/* Partner Mood Pill (Live Synchronized) */}
-        <div className="inline-flex items-center gap-2 rounded-full bg-sky-50/90 dark:bg-slate-800/90 border border-sky-200/80 dark:border-slate-700 px-3.5 py-1.5 text-xs font-semibold text-[#1E293B] dark:text-slate-100 shadow-sm">
+        {/* Partner Mood Pill */}
+        <div className="inline-flex min-h-9 items-center gap-2 rounded-full bg-[#FFF5F7] dark:bg-[#2E2433] border border-[#F3D8DF] dark:border-[#3B2E40] px-3.5 py-1.5 text-xs font-semibold text-[#2D232E] dark:text-[#FAF5F7]">
           <img
             src={partnerMeta.svgPath}
             alt={partnerMeta.name}
             className="h-4 w-4 object-contain"
           />
-          <span className="text-slate-500 dark:text-slate-400 font-normal">
+          <span className="text-[#6E5A68] dark:text-[#B8A6B5] font-normal">
             {partnerName}:
           </span>
-          <span className="text-sky-600 dark:text-sky-300 font-bold">
+          <span className="text-sky-700 dark:text-sky-300 font-bold">
             {partnerMood ? partnerMood.statusText : "Sedang santai 🌸"}
           </span>
-          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
         </div>
       </div>
 
       {/* Mood Selector Modal */}
       <AnimatePresence>
         {openModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#18131A]/55">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 14 }}
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="w-full max-w-sm rounded-[28px] bg-white dark:bg-slate-900 border border-pink-100 dark:border-slate-800 p-5 shadow-2xl space-y-4"
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              className="w-full max-w-sm rounded-3xl bg-[#FFFDF9] dark:bg-[#221B25] border-2 border-[#F3D8DF] dark:border-[#3B2E40] p-5 shadow-xl space-y-4"
             >
-              <div className="flex items-center justify-between pb-2 border-b border-pink-50 dark:border-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-[#F3D8DF] dark:border-[#3B2E40]">
                 <div className="flex items-center gap-2">
-                  <div className="h-7 w-7 rounded-full bg-pink-100 dark:bg-pink-950/60 flex items-center justify-center text-pink-500">
+                  <div className="h-8 w-8 rounded-full bg-rose-50 dark:bg-[#2E2433] flex items-center justify-center text-rose-500">
                     <Smile className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-[#1E293B] dark:text-white">
-                      Bagikan Mood Sanrio-mu ☁️
+                    <h3 className="font-display text-sm font-bold text-[#2D232E] dark:text-white">
+                      Kabar Suasana Hatimu
                     </h3>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      Tersinkronisasi langsung ke layar pasanganmu
+                    <p className="text-xs text-[#6E5A68] dark:text-[#B8A6B5]">
+                      Langsung tampil di layar {partnerName}
                     </p>
                   </div>
                 </div>
@@ -205,7 +202,8 @@ export function SanrioMoodPill({
                     playPop();
                     setOpenModal(false);
                   }}
-                  className="rounded-full p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  aria-label="Tutup pilihan mood"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[#6E5A68] hover:bg-rose-50 dark:hover:bg-[#2E2433] cursor-pointer"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -224,10 +222,10 @@ export function SanrioMoodPill({
                       key={preset.id}
                       type="button"
                       onClick={() => handleSelectPreset(preset)}
-                      className={`flex items-center gap-2 rounded-2xl p-2.5 text-left text-xs font-semibold transition-all border ${
+                      className={`flex items-center gap-2 rounded-2xl p-2.5 text-left text-xs font-semibold transition-all border cursor-pointer ${
                         isSelected
-                          ? "bg-pink-50 dark:bg-purple-950/50 border-pink-300 dark:border-purple-600 text-pink-700 dark:text-pink-300 shadow-xs"
-                          : "bg-slate-50 dark:bg-slate-800/60 border-slate-200/80 dark:border-slate-700 text-[#1E293B] dark:text-slate-200 hover:bg-pink-50/50 dark:hover:bg-slate-800"
+                          ? "bg-rose-50 dark:bg-[#3B2E40] border-rose-400 text-rose-700 dark:text-pink-200"
+                          : "bg-white dark:bg-[#2E2433] border-[#F3D8DF] dark:border-[#3B2E40] text-[#2D232E] dark:text-[#FAF5F7] hover:border-rose-300"
                       }`}
                     >
                       <img
@@ -243,9 +241,9 @@ export function SanrioMoodPill({
 
               {/* Custom Status Input Form */}
               <form onSubmit={handleCustomSubmit} className="space-y-2 pt-1">
-                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                  <Edit3 className="h-3 w-3 text-pink-500" />
-                  <span>Atau tulis status manismu sendiri:</span>
+                <label className="text-xs font-bold text-[#2D232E] dark:text-[#FAF5F7] flex items-center gap-1.5">
+                  <Edit3 className="h-3.5 w-3.5 text-rose-500" />
+                  <span>Atau tulis statusmu sendiri:</span>
                 </label>
                 <div className="flex items-center gap-1.5">
                   <input
@@ -253,14 +251,14 @@ export function SanrioMoodPill({
                     maxLength={32}
                     value={customText}
                     onChange={(e) => setCustomText(e.target.value)}
-                    placeholder="Contoh: Mau ngopi bareng sore ini ☕"
-                    className="flex-1 rounded-full border border-pink-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-1.5 text-xs text-[#1E293B] dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-pink-300 dark:focus:ring-purple-600"
+                    placeholder="Contoh: Mau ngopi sore ini ☕"
+                    className="flex-1 rounded-full border border-[#F3D8DF] dark:border-[#3B2E40] bg-white dark:bg-[#18131A] px-3.5 py-2 text-xs text-[#2D232E] dark:text-white placeholder:text-[#6E5A68]/60 focus:outline-none focus:border-rose-400"
                   />
                   <button
                     type="submit"
-                    className="rounded-full bg-gradient-to-r from-pink-500 to-rose-400 dark:from-purple-600 dark:to-pink-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:opacity-95 cursor-pointer shrink-0"
+                    className="rounded-full bg-rose-500 hover:bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-2xs cursor-pointer shrink-0"
                   >
-                    Kirim
+                    Simpan
                   </button>
                 </div>
               </form>
